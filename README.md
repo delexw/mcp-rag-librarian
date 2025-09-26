@@ -612,6 +612,16 @@ Enable verbose logging for troubleshooting:
 uvx rag-mcp-server --verbose
 ```
 
+### Testing with MCP Inspector
+
+Test your RAG server interactively using MCP Inspector:
+
+```bash
+npx @modelcontextprotocol/inspector --config mcp_inspector_config.json
+```
+
+This will launch a web interface where you can test all MCP tools interactively. Make sure you have a `mcp_inspector_config.json` file in your project root with your server configuration.
+
 ## Help and Resources
 
 - [GitHub Repository](https://github.com/yourusername/rag-mcp-server)

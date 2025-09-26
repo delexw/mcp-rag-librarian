@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "rag-mcp-server-uvx": {
+      "command": "uvx",
+      "args": [
+        "--no-cache",
+        "--from",
+        ".",
+        "rag-mcp-server",
+        "--knowledge-base",
+        "./",
+        "--embedding-model",
+        "all-MiniLM-L6-v2",
+        "--chunk-size",
+        "800",
+        "--chunk-overlap",
+        "100",
+        "--top-k",
+        "5"
+      ]
+    }
+  }
+}
