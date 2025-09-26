@@ -171,7 +171,7 @@ class DocumentProcessor:
         """
         ext = filepath.suffix.lower()
 
-        if ext == ".txt":
+        if ext in [".txt", ".md"]:
             return self._extract_text_from_txt(filepath)
         elif ext == ".pdf":
             return self._extract_text_from_pdf(filepath)

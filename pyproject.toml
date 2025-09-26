@@ -3,16 +3,17 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rag-mcp-server"
-version = "0.1.0"
-description = "MCP server for RAG (Retrieval-Augmented Generation) operations with local document indexing"
+name = "rag-librarian"
+version = "0.1.1"
+description = "MCP server for RAG (Retrieval-Augmented Generation) operations with local document indexing - Fork with enhancements"
 readme = "README.md"
 license = {text = "MIT"}
 authors = [
-    {name = "Tommaso Maria Ungetti", email = "tommaso.ungetti@outlook.com"}
+    {name = "Tommaso Maria Ungetti", email = "tommaso.ungetti@outlook.com"},
+    {name = "Yang Liu (delexw)", email = "yang.liu@envato.com"}
 ]
 maintainers = [
-    {name = "Tommaso Maria Ungetti", email = "tommaso.ungetti@outlook.com"}
+    {name = "Yang Liu (delexw)", email = "yang.liu@envato.com"}
 ]
 keywords = ["mcp", "rag", "retrieval", "embedding", "semantic-search", "ai", "llm"]
 classifiers = [
@@ -49,13 +50,14 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/tungetti/rag-mcp-server"
-Repository = "https://github.com/tungetti/rag-mcp-server"
-Documentation = "https://github.com/tungetti/rag-mcp-server#readme"
-"Bug Tracker" = "https://github.com/tungetti/rag-mcp-server/issues"
+Homepage = "https://github.com/delexw/rag-librarian"
+Repository = "https://github.com/delexw/rag-librarian"
+Documentation = "https://github.com/delexw/rag-librarian#readme"
+"Bug Tracker" = "https://github.com/delexw/rag-librarian/issues"
+"Original Repository" = "https://github.com/tungetti/rag-mcp-server"
 
 [project.scripts]
-rag-mcp-server = "rag_mcp_server.server:main"
+rag-librarian = "rag_mcp_server.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
