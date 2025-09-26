@@ -10,10 +10,10 @@ readme = "README.md"
 license = {text = "MIT"}
 authors = [
     {name = "Tommaso Maria Ungetti", email = "tommaso.ungetti@outlook.com"},
-    {name = "Yang Liu (delexw)", email = "yang.liu@envato.com"}
+    {name = "Yang Liu (delexw)", email = "adamyoungliu@gmail.com"}
 ]
 maintainers = [
-    {name = "Yang Liu (delexw)", email = "yang.liu@envato.com"}
+    {name = "Yang Liu (delexw)", email = "adamyoungliu@gmail.com"}
 ]
 keywords = ["mcp", "rag", "retrieval", "embedding", "semantic-search", "ai", "llm"]
 classifiers = [
