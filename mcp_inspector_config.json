@@ -16,7 +16,8 @@
         "--chunk-overlap",
         "100",
         "--top-k",
-        "5"
+        "5",
+        "--persist-cache"
       ]
     }
   }

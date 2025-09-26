@@ -4,7 +4,6 @@ Main MCP server for RAG operations.
 Provides tools for knowledge base management and semantic search.
 """
 
-import asyncio
 import logging
 import argparse
 from pathlib import Path
@@ -12,10 +11,11 @@ from typing import Optional, Union
 
 from mcp.server.fastmcp import FastMCP
 
-from .core.document_processor import DocumentProcessor, Document
+from .core.document_processor import DocumentProcessor
 from .core.embedding_service import EmbeddingService
 from .core.faiss_index import FAISSIndex
 from .core.document_store import DocumentStore
+from .core.persistence_factory import PersistenceFactory
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -44,12 +44,74 @@ rag_state = {
     "documents": [],
     "initialized_kb_paths": set(),
     "default_config": {"knowledge_base_path": None, **DEFAULT_VALUES},  # Spread the default values
+    "persistence_strategy": None,  # SOLID: Dependency injection
+    "embedding_service_cache": {},  # Cache embedding services by model name
 }
 
 
 def get_kb_cache_key(kb_path: str, embedding_model: str) -> str:
     """Generate a cache key for knowledge base configuration."""
     return f"{kb_path}:{embedding_model}"
+
+
+def initialize_persistence():
+    """Initialize persistence strategy using SOLID principles"""
+    if rag_state["persistence_strategy"] is None:
+        rag_state["persistence_strategy"] = PersistenceFactory.create_file_persistence_strategy()
+    return rag_state["persistence_strategy"]
+
+
+def create_knowledge_base_factory(kb_path: str, embedding_model: str,
+                                       chunk_size: int, chunk_overlap: int):
+    """Factory function to create knowledge base components"""
+    logger.info(f"🏭 FACTORY: Starting factory for {kb_path}, model: {embedding_model}")
+
+    # Get or create cached embedding service
+    logger.info(f"🔍 FACTORY: Checking embedding service cache for model: {embedding_model}")
+    embedding_service_cache = rag_state["embedding_service_cache"]
+
+    if embedding_model in embedding_service_cache:
+        logger.info(f"✅ FACTORY: Found cached EmbeddingService for {embedding_model}")
+        embedding_service = embedding_service_cache[embedding_model]
+        logger.info(f"🚀 FACTORY: Reusing cached service, dimension: {embedding_service.dimension}")
+    else:
+        logger.info(f"🧠 FACTORY: Creating new EmbeddingService for {embedding_model}...")
+        embedding_service = EmbeddingService(embedding_model)
+        logger.info(f"✅ FACTORY: New EmbeddingService created, dimension: {embedding_service.dimension}")
+
+        # Cache the service for future use
+        embedding_service_cache[embedding_model] = embedding_service
+        logger.info(f"💾 FACTORY: Cached EmbeddingService for {embedding_model}")
+
+    logger.info(f"📄 FACTORY: Initializing DocumentProcessor...")
+    document_processor = DocumentProcessor(chunk_size, chunk_overlap)
+    logger.info(f"✅ FACTORY: DocumentProcessor initialized")
+
+    # Load and process documents
+    logger.info(f"📚 FACTORY: Loading documents from {kb_path}...")
+    documents = document_processor.load_documents(Path(kb_path))
+    if not documents:
+        raise ValueError(f"No documents found in {kb_path}")
+    logger.info(f"✅ FACTORY: Loaded {len(documents)} document chunks")
+
+    # Generate embeddings
+    logger.info(f"🔢 FACTORY: Generating embeddings for {len(documents)} chunks...")
+    texts = [doc.content for doc in documents]
+    logger.info(f"📝 FACTORY: Extracted texts, total characters: {sum(len(t) for t in texts)}")
+
+    embeddings = embedding_service.get_embeddings(texts)
+    logger.info(f"✅ FACTORY: Generated embeddings with shape: {embeddings.shape}")
+
+    # Build FAISS index
+    logger.info(f"🗂️ FACTORY: Building FAISS index with dimension {embedding_service.dimension}...")
+    faiss_index = FAISSIndex(embedding_service.dimension)
+
+    logger.info(f"➕ FACTORY: Adding embeddings to FAISS index...")
+    faiss_index.add_embeddings(embeddings)
+    logger.info(f"✅ FACTORY: FAISS index built, initialized: {faiss_index.initialized}")
+
+    logger.info(f"🎉 FACTORY: Factory complete!")
+    return embeddings, documents, faiss_index
 
 
 def resolve_knowledge_base_path(provided_path: Optional[str] = None) -> str:
@@ -124,38 +186,55 @@ async def initialize_knowledge_base(
         if not kb_path.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_path_str}")
 
-        # Initialize components with the resolved values
-        logger.info(f"Initializing EmbeddingService with model: {embedding_model}")
-        embedding_service = EmbeddingService(embedding_model)
+        # Use persistence strategy for fast initialization if --persist-cache is enabled
+        persist_enabled = rag_state["default_config"].get("persist_cache", False)
 
-        logger.info(
-            f"Initializing DocumentProcessor with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
-        )
-        document_processor = DocumentProcessor(chunk_size, chunk_overlap)
+        if persist_enabled:
+            logger.info("🚀 INIT: Using persistence strategy for fast initialization...")
 
-        faiss_index = FAISSIndex(embedding_service.dimension)
+            # Initialize persistence if needed
+            if rag_state["persistence_strategy"] is None:
+                rag_state["persistence_strategy"] = initialize_persistence()
+
+            # This will load from cache (fast) or create new (slow)
+            _, documents, faiss_index = rag_state["persistence_strategy"].get_or_create_knowledge_base(
+                kb_path_str,
+                embedding_model,
+                chunk_size,
+                chunk_overlap,
+                lambda: create_knowledge_base_factory(kb_path_str, embedding_model, chunk_size, chunk_overlap)
+            )
+
+            # Get embedding service from cache (it was cached by factory)
+            embedding_service = rag_state["embedding_service_cache"].get(embedding_model)
+            if not embedding_service:
+                logger.warning("⚠️ INIT: Embedding service not in cache, creating new one...")
+                embedding_service = EmbeddingService(embedding_model)
+
+        else:
+            # Legacy initialization without persistence
+            logger.info(f"Initializing EmbeddingService with model: {embedding_model}")
+            embedding_service = EmbeddingService(embedding_model)
+
+            # Continue with legacy path for non-persistent initialization
+            logger.info(
+                f"Initializing DocumentProcessor with chunk_size={chunk_size}, chunk_overlap={chunk_overlap}"
+            )
+            document_processor = DocumentProcessor(chunk_size, chunk_overlap)
+
+            # Load and process documents using legacy method
+            _, documents, faiss_index = create_knowledge_base_factory(
+                kb_path_str, embedding_model, chunk_size, chunk_overlap)
 
         # Create document store in the same directory as the knowledge base
+        logger.info("Initializing DocumentStore...")
         store_path = kb_path / "document_store.db"
         document_store = DocumentStore(str(store_path))
 
-        # Load and process documents
-        logger.info("Loading and processing documents...")
-        documents = document_processor.load_documents(kb_path)
-
-        if not documents:
-            return f"No documents found in {kb_path_str}. Supported extensions: {document_processor.get_supported_extensions()}"
-
-        logger.info(f"Processed into {len(documents)} chunks (chunk_size={chunk_size})")
-
-        # Generate embeddings
-        logger.info("Generating embeddings...")
-        texts = [doc.content for doc in documents]
-        embeddings = embedding_service.get_embeddings(texts)
-
-        # Build FAISS index
-        logger.info("Building FAISS index...")
-        faiss_index.add_embeddings(embeddings)
+        # Initialize remaining components for both paths
+        logger.info("Finalizing component initialization...")
+        # Always create document_processor for file discovery
+        document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
         # Update document store
         logger.info("Updating document store...")
@@ -174,6 +253,8 @@ async def initialize_knowledge_base(
                 file_hash = document_store.compute_file_hash(file_path)
                 chunk_count = relative_path_chunks[relative_path]
                 document_store.store_document(file_path, file_hash, chunk_count, relative_path)
+
+        # SOLID: Cache saving is handled by persistence strategy
 
         # Update global state
         cache_key = get_kb_cache_key(kb_path_str, embedding_model)
@@ -301,10 +382,9 @@ async def semantic_search(
         if top_k is None:
             top_k = get_default_value("top_k")
 
+        # Check if knowledge base is initialized
         if not rag_state.get("current_kb_path") == kb_path_str:
-            return (
-                f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
-            )
+            return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
 
         embedding_service = rag_state["embedding_service"]
         faiss_index = rag_state["faiss_index"]
@@ -465,6 +545,76 @@ async def list_documents(knowledge_base_path: Union[str, None] = None) -> str:
         raise
 
 
+def startup_auto_load():
+    """Auto-load cached knowledge base at server startup if conditions are met"""
+    persist_enabled = rag_state["default_config"].get("persist_cache", False)
+    kb_path = rag_state["default_config"].get("knowledge_base_path")
+
+    if not persist_enabled:
+        logger.info("🔄 STARTUP: Persistence not enabled, skipping auto-load")
+        return
+
+    if not kb_path:
+        logger.info("🔄 STARTUP: No default knowledge base path set, skipping auto-load")
+        return
+
+    logger.info(f"🚀 STARTUP: Auto-loading cached knowledge base from {kb_path}")
+
+    try:
+        # Use same logic as search auto-init but at startup
+        embedding_model = rag_state["default_config"]["embedding_model"]
+        chunk_size = rag_state["default_config"]["chunk_size"]
+        chunk_overlap = rag_state["default_config"]["chunk_overlap"]
+
+        # Initialize persistence strategy
+        if rag_state["persistence_strategy"] is None:
+            rag_state["persistence_strategy"] = initialize_persistence()
+
+        # Try to load from cache
+        logger.info("⚡ STARTUP: Attempting cache load...")
+        _, documents, faiss_index = rag_state["persistence_strategy"].get_or_create_knowledge_base(
+            kb_path,
+            embedding_model,
+            chunk_size,
+            chunk_overlap,
+            lambda: None  # Don't create if cache miss - just skip startup load
+        )
+
+        if documents:
+            # Ensure embedding service is available
+            embedding_service = rag_state["embedding_service_cache"].get(embedding_model)
+            if not embedding_service:
+                logger.info(f"🧠 STARTUP: Creating embedding service for {embedding_model}")
+                embedding_service = EmbeddingService(embedding_model)
+                rag_state["embedding_service_cache"][embedding_model] = embedding_service
+
+            # Initialize document store for the loaded knowledge base
+            logger.info("📊 STARTUP: Initializing DocumentStore...")
+            from pathlib import Path
+            from rag_mcp_server.core.document_store import DocumentStore
+            kb_path_obj = Path(kb_path)
+            store_path = kb_path_obj / "document_store.db"
+            document_store = DocumentStore(str(store_path))
+
+            # Update global state for immediate tool availability
+            rag_state.update({
+                "embedding_service": embedding_service,
+                "faiss_index": faiss_index,
+                "documents": documents,
+                "current_kb_path": kb_path,
+                "document_store": document_store,
+            })
+
+            logger.info(f"✅ STARTUP: Knowledge base ready! {len(documents)} docs loaded from cache")
+        else:
+            logger.info("📝 STARTUP: No cache found, knowledge base will initialize on first tool call")
+
+    except Exception as e:
+        # Don't fail server startup if cache loading fails
+        logger.warning(f"⚠️ STARTUP: Cache loading failed (non-fatal): {e}")
+        logger.info("📝 STARTUP: Knowledge base will initialize on first tool call")
+
+
 def parse_arguments():
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(description="RAG MCP Server")
@@ -496,6 +646,7 @@ def parse_arguments():
         help=f"Default number of search results (default: {DEFAULT_VALUES['top_k']})",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--persist-cache", action="store_true", help="Enable persistence of FAISS index and embeddings cache")
     return parser.parse_args()
 
 
@@ -526,10 +677,17 @@ def main():
     rag_state["default_config"]["top_k"] = args.top_k
     logger.info(f"Command line config: top_k = {args.top_k}")
 
+    # Store persistence setting
+    rag_state["default_config"]["persist_cache"] = args.persist_cache
+    logger.info(f"Command line config: persist_cache = {args.persist_cache}")
+
     logger.info(f"=== RAG MCP Server Starting ===")
     logger.info(f"Final configuration:")
     for key, value in rag_state["default_config"].items():
         logger.info(f"  - {key}: {value}")
+
+    # Auto-load cache at startup if persistence is enabled and knowledge base path is set
+    startup_auto_load()
 
     if args.port != 8000 or args.host != "localhost":
         logger.info(f"Starting HTTP server on {args.host}:{args.port}")
