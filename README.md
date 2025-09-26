@@ -633,7 +633,6 @@ This will launch a web interface where you can test all MCP tools interactively.
 - [Original Repository](https://github.com/tungetti/rag-mcp-server)
 - [MCP Documentation](https://github.com/modelcontextprotocol/mcp)
 - [Issue Tracker](https://github.com/delexw/mcp-rag-librarian/issues)
-- Email: [yang.liu@envato.com](mailto:yang.liu@envato.com)
 
 ## Contributing
 
