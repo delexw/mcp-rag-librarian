@@ -1,10 +1,10 @@
-# RAG Librarian 📚🦸‍♀️
+# MCP RAG Librarian 📚🦸‍♀️
 
 <div align="center">
-  <h1>RAG Librarian</h1>
+  <h1>MCP RAG Librarian</h1>
   <p>
-    <a href="https://pypi.org/project/rag-librarian/"><img src="https://img.shields.io/pypi/v/rag-librarian" alt="PyPI"></a>
-    <a href="LICENSE"><img src="https://img.shields.io/github/license/delexw/rag-librarian" alt="License"></a>
+    <a href="https://pypi.org/project/mcp-rag-librarian/"><img src="https://img.shields.io/pypi/v/mcp-rag-librarian" alt="PyPI"></a>
+    <a href="LICENSE"><img src="https://img.shields.io/github/license/delexw/mcp-rag-librarian" alt="License"></a>
   </p>
   <p><strong>Fork of <a href="https://github.com/tungetti/rag-mcp-server">tungetti/rag-mcp-server</a> with enhancements</strong></p>
   <p><em>Original work by <a href="https://github.com/tungetti">Tommaso Maria Ungetti</a></em></p>
@@ -50,7 +50,7 @@ A Model Context Protocol (MCP) server for Retrieval-Augmented Generation (RAG) o
 ## Architecture
 
 ```
-rag-librarian/
+mcp-rag-librarian/
 ├── src/rag_mcp_server/
 │   ├── server.py              # Main MCP server implementation
 │   └── core/
@@ -66,20 +66,20 @@ rag-librarian/
 
 ```bash
 # Install with uvx (comes with uv)
-uvx rag-librarian
+uvx mcp-rag-librarian
 ```
 
 ### Using pip
 
 ```bash
-pip install rag-librarian
+pip install mcp-rag-librarian
 ```
 
 ### From source
 
 ```bash
 git clone <repository-url>
-cd rag-librarian
+cd mcp-rag-librarian
 pip install -e .
 ```
 
@@ -107,7 +107,7 @@ The easiest way to run the MCP server is with `uvx`, but manual setup is also av
    Or manually add with custom configuration:
 
    ```bash
-   claude mcp add-json rag '{"command":"uvx","args":["rag-librarian","--knowledge-base","/path/to/your/docs","--embedding-model","all-MiniLM-L6-v2","--chunk-size","1000","--chunk-overlap","200"]}'
+   claude mcp add-json rag '{"command":"uvx","args":["mcp-rag-librarian","--knowledge-base","/path/to/your/docs","--embedding-model","all-MiniLM-L6-v2","--chunk-size","1000","--chunk-overlap","200"]}'
    ```
 
 #### Cursor
@@ -144,7 +144,7 @@ The easiest way to run the MCP server is with `uvx`, but manual setup is also av
      "mcpServers": {
        "rag": {
          "command": "uvx",
-         "args": ["rag-librarian"]
+         "args": ["mcp-rag-librarian"]
        }
      }
    }
@@ -157,7 +157,7 @@ The easiest way to run the MCP server is with `uvx`, but manual setup is also av
        "rag": {
          "command": "uvx",
          "args": [
-           "rag-librarian",
+           "mcp-rag-librarian",
            "--knowledge-base", "/path/to/your/documents",
            "--embedding-model", "ibm-granite/granite-embedding-278m-multilingual",
            "--chunk-size", "500",
@@ -176,10 +176,10 @@ If you prefer to run the server manually or need specific Python version:
 
 ```bash
 # Run with default settings
-uvx rag-librarian
+uvx mcp-rag-librarian
 
 # Run with all parameters specified
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /path/to/documents \
   --embedding-model "ibm-granite/granite-embedding-278m-multilingual" \
   --chunk-size 500 \
@@ -188,7 +188,7 @@ uvx rag-librarian \
   --verbose
 
 # Run from source directory
-uvx --from . rag-librarian \
+uvx --from . mcp-rag-librarian \
   --knowledge-base /home/user/documents \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 800 \
@@ -248,7 +248,7 @@ Initialize the knowledge base at "/docs/international" using the multilingual mo
 
 **High-Quality Configuration for Research:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /home/tommasomariaungetti/RAG \
   --embedding-model "all-mpnet-base-v2" \
   --chunk-size 1000 \
@@ -259,7 +259,7 @@ uvx rag-librarian \
 
 **Fast Processing for Large Document Sets:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /data/large_corpus \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 2000 \
@@ -269,7 +269,7 @@ uvx rag-librarian \
 
 **Multilingual Document Processing:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /docs/multilingual \
   --embedding-model "ibm-granite/granite-embedding-278m-multilingual" \
   --chunk-size 500 \
@@ -279,7 +279,7 @@ uvx rag-librarian \
 
 **Running from Source with Custom Settings:**
 ```bash
-uvx --from . rag-librarian \
+uvx --from . mcp-rag-librarian \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 800 \
   --chunk-overlap 100 \
@@ -449,7 +449,7 @@ The system uses a sophisticated document processing pipeline:
   "mcpServers": {
     "rag": {
       "command": "uvx",
-      "args": ["rag-librarian"]
+      "args": ["mcp-rag-librarian"]
     }
   }
 }
@@ -462,7 +462,7 @@ The system uses a sophisticated document processing pipeline:
     "rag": {
       "command": "uvx",
       "args": [
-        "rag-librarian",
+        "mcp-rag-librarian",
         "--knowledge-base", "/path/to/documents",
         "--embedding-model", "ibm-granite/granite-embedding-278m-multilingual",
         "--chunk-size", "500",
@@ -482,7 +482,7 @@ The system uses a sophisticated document processing pipeline:
     "rag-technical": {
       "command": "uvx",
       "args": [
-        "rag-librarian",
+        "mcp-rag-librarian",
         "--knowledge-base", "/docs/technical",
         "--embedding-model", "all-mpnet-base-v2",
         "--chunk-size", "1000",
@@ -492,7 +492,7 @@ The system uses a sophisticated document processing pipeline:
     "rag-research": {
       "command": "uvx",
       "args": [
-        "rag-librarian",
+        "mcp-rag-librarian",
         "--knowledge-base", "/docs/research",
         "--embedding-model", "all-MiniLM-L6-v2",
         "--chunk-size", "500",
@@ -508,7 +508,7 @@ The system uses a sophisticated document processing pipeline:
 
 **High-Quality Configuration for Research:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /path/to/research/docs \
   --embedding-model "all-mpnet-base-v2" \
   --chunk-size 1000 \
@@ -518,7 +518,7 @@ uvx rag-librarian \
 
 **Fast Processing Configuration:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /path/to/large/corpus \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 2000 \
@@ -528,7 +528,7 @@ uvx rag-librarian \
 
 **Multilingual Configuration:**
 ```bash
-uvx rag-librarian \
+uvx mcp-rag-librarian \
   --knowledge-base /path/to/multilingual/docs \
   --embedding-model "ibm-granite/granite-embedding-278m-multilingual" \
   --chunk-size 500 \
@@ -538,7 +538,7 @@ uvx rag-librarian \
 
 **Development Configuration with Verbose Logging:**
 ```bash
-uvx --from . rag-librarian \
+uvx --from . mcp-rag-librarian \
   --knowledge-base ./test_documents \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 300 \
@@ -613,7 +613,7 @@ mypy src/
 
 Enable verbose logging for troubleshooting:
 ```bash
-uvx rag-librarian --verbose
+uvx mcp-rag-librarian --verbose
 ```
 
 ### Testing with MCP Inspector
@@ -628,11 +628,11 @@ This will launch a web interface where you can test all MCP tools interactively.
 
 ## Help and Resources
 
-- [GitHub Repository](https://github.com/delexw/rag-librarian)
-- [PyPI Package](https://pypi.org/project/rag-librarian/)
+- [GitHub Repository](https://github.com/delexw/mcp-rag-librarian)
+- [PyPI Package](https://pypi.org/project/mcp-rag-librarian/)
 - [Original Repository](https://github.com/tungetti/rag-mcp-server)
 - [MCP Documentation](https://github.com/modelcontextprotocol/mcp)
-- [Issue Tracker](https://github.com/delexw/rag-librarian/issues)
+- [Issue Tracker](https://github.com/delexw/mcp-rag-librarian/issues)
 - Email: [yang.liu@envato.com](mailto:yang.liu@envato.com)
 
 ## Contributing

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "rag-librarian"
+name = "mcp-rag-librarian"
 version = "0.1.1"
 description = "MCP server for RAG (Retrieval-Augmented Generation) operations with local document indexing - Fork with enhancements"
 readme = "README.md"
@@ -50,14 +50,14 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/delexw/rag-librarian"
-Repository = "https://github.com/delexw/rag-librarian"
-Documentation = "https://github.com/delexw/rag-librarian#readme"
-"Bug Tracker" = "https://github.com/delexw/rag-librarian/issues"
+Homepage = "https://github.com/delexw/mcp-rag-librarian"
+Repository = "https://github.com/delexw/mcp-rag-librarian"
+Documentation = "https://github.com/delexw/mcp-rag-librarian#readme"
+"Bug Tracker" = "https://github.com/delexw/mcp-rag-librarian/issues"
 "Original Repository" = "https://github.com/tungetti/rag-mcp-server"
 
 [project.scripts]
-rag-librarian = "rag_mcp_server.server:main"
+mcp-rag-librarian = "rag_mcp_server.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
