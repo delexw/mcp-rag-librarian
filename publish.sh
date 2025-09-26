@@ -49,7 +49,7 @@ echo -e "${BLUE}📦 Building package...${NC}"
 python -m build
 
 # Check if build was successful
-if [[ ! -f "dist/"*.whl ]] || [[ ! -f "dist/"*.tar.gz ]]; then
+if ! ls dist/*.whl 1> /dev/null 2>&1 || ! ls dist/*.tar.gz 1> /dev/null 2>&1; then
     echo -e "${RED}Build failed! No distribution files found.${NC}"
     exit 1
 fi
