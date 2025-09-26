@@ -6,7 +6,7 @@
     <a href="https://pypi.org/project/mcp-rag-librarian/"><img src="https://img.shields.io/pypi/v/mcp-rag-librarian" alt="PyPI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/delexw/mcp-rag-librarian" alt="License"></a>
   </p>
-  <p><strong>Fork of <a href="https://github.com/tungetti/rag-mcp-server">tungetti/rag-mcp-server</a> with enhancements</strong></p>
+  <p><strong>Fork of <a href="https://github.com/tungetti/rag-mcp-server">tungetti/rag-mcp-server</a> with persistence enhancements</strong></p>
   <p><em>Original work by <a href="https://github.com/tungetti">Tommaso Maria Ungetti</a></em></p>
 </div>
 
@@ -39,12 +39,15 @@ A Model Context Protocol (MCP) server for Retrieval-Augmented Generation (RAG) o
 
 ## Features
 
-- **Document Processing**: Supports multiple file formats (.txt, .pdf) with automatic text extraction
+- **Document Processing**: Supports multiple file formats (.txt, .pdf, .md) with automatic text extraction and recursive directory scanning
 - **Intelligent Chunking**: Configurable text chunking with overlap to preserve context
 - **Vector Embeddings**: Uses SentenceTransformers for high-quality text embeddings
 - **Semantic Search**: FAISS-powered similarity search for fast and accurate retrieval
 - **Incremental Updates**: Smart document tracking to only process new or changed files
-- **Persistent Storage**: SQLite-based document store for metadata and change tracking
+- **Persistent Caching**: FAISS index and embeddings persistence with `--persist-cache` flag
+- **Auto-Load on Startup**: Cached knowledge bases load automatically when server starts
+- **SOLID Architecture**: Clean, extensible persistence layer following SOLID principles
+- **SQLite Document Store**: Document metadata and change tracking
 - **Flexible Configuration**: Customizable embedding models, chunk sizes, and search parameters
 
 ## Architecture
@@ -54,10 +57,13 @@ mcp-rag-librarian/
 ├── src/rag_mcp_server/
 │   ├── server.py              # Main MCP server implementation
 │   └── core/
-│       ├── document_processor.py  # Document loading and chunking
-│       ├── embedding_service.py   # Text embedding generation
-│       ├── faiss_index.py        # Vector similarity search
-│       └── document_store.py     # Document metadata storage
+│       ├── document_processor.py   # Document loading and chunking
+│       ├── embedding_service.py    # Text embedding generation
+│       ├── faiss_index.py          # Vector similarity search
+│       ├── document_store.py       # Document metadata storage
+│       ├── persistence.py          # SOLID persistence abstractions
+│       ├── file_persistence.py     # File-based persistence provider
+│       └── persistence_factory.py  # Dependency injection factory
 ```
 
 ## Installation
@@ -150,7 +156,7 @@ The easiest way to run the MCP server is with `uvx`, but manual setup is also av
    }
    ```
 
-   **Full Configuration with All Parameters:**
+   **Full Configuration with All Parameters (including persistence):**
    ```json
    {
      "mcpServers": {
@@ -163,6 +169,7 @@ The easiest way to run the MCP server is with `uvx`, but manual setup is also av
            "--chunk-size", "500",
            "--chunk-overlap", "200",
            "--top-k", "7",
+           "--persist-cache",
            "--verbose"
          ]
        }
@@ -178,23 +185,65 @@ If you prefer to run the server manually or need specific Python version:
 # Run with default settings
 uvx mcp-rag-librarian
 
-# Run with all parameters specified
+# Run with all parameters specified (including persistence)
 uvx mcp-rag-librarian \
   --knowledge-base /path/to/documents \
   --embedding-model "ibm-granite/granite-embedding-278m-multilingual" \
   --chunk-size 500 \
   --chunk-overlap 200 \
   --top-k 7 \
+  --persist-cache \
   --verbose
 
-# Run from source directory
+# Run from source directory with persistence
 uvx --from . mcp-rag-librarian \
   --knowledge-base /home/user/documents \
   --embedding-model "all-MiniLM-L6-v2" \
   --chunk-size 800 \
   --chunk-overlap 100 \
-  --top-k 5
+  --top-k 5 \
+  --persist-cache
 ```
+
+## Persistence Feature
+
+**🆕 NEW**: This fork adds persistent caching capabilities to avoid re-processing documents on server restart.
+
+### Key Benefits
+- **Faster Startup**: Skip re-initialization when cache exists
+- **Automatic Loading**: Cached knowledge bases load on server startup
+- **Smart Caching**: Uses MD5 hash of configuration to ensure cache consistency
+- **SOLID Architecture**: Extensible persistence layer with clean abstractions
+
+### How to Enable Persistence
+
+Add the `--persist-cache` flag to your configuration:
+
+```json
+{
+  "mcpServers": {
+    "rag": {
+      "command": "uvx",
+      "args": [
+        "mcp-rag-librarian",
+        "--knowledge-base", "/path/to/your/docs",
+        "--persist-cache"
+      ]
+    }
+  }
+}
+```
+
+### Cache Behavior
+- **Cache Location**: `.rag_cache/` directory alongside your knowledge base
+- **Cache Key**: Based on path + embedding model + chunk settings
+- **Auto-Load**: Cached data loads automatically when server starts
+- **Fallback**: Falls back to normal initialization if cache is invalid
+
+### Example Workflow
+1. **First Run**: Initialize knowledge base normally (creates cache)
+2. **Server Restart**: Cached data loads automatically at startup
+3. **Ready to Search**: No manual initialization needed
 
 ## Usage Examples
 
@@ -409,11 +458,15 @@ List all documents in the knowledge base with metadata.
 
 The system uses a sophisticated document processing pipeline:
 
-1. **File Detection**: Scans directories for supported file types
-2. **Content Extraction**: 
-   - Plain text files: Direct UTF-8/Latin-1 reading
+1. **File Discovery**: Recursively scans directories and subdirectories for supported file types
+2. **Supported Formats**:
+   - `.txt` files: Plain text documents
+   - `.pdf` files: PDF documents with text extraction
+   - `.md` files: Markdown documents (processed as text)
+3. **Content Extraction**:
+   - Plain text/Markdown: Direct UTF-8/Latin-1 reading with encoding fallback
    - PDF files: PyMuPDF-based text extraction
-3. **Text Chunking**: 
+4. **Text Chunking**:
    - Splits documents into manageable chunks
    - Preserves word boundaries
    - Maintains context with configurable overlap
@@ -607,7 +660,7 @@ mypy src/
    - Solution: Check internet connection or use a locally cached model
 
 4. **"No documents found in knowledge base"**
-   - Solution: Ensure directory contains .txt or .pdf files
+   - Solution: Ensure directory contains .txt, .pdf, or .md files (searches recursively in subdirectories)
 
 ### Debug Mode
 
