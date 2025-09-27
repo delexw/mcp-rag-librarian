@@ -57,9 +57,9 @@ class KnowledgeBaseManager:
         kb_path: Path,
         embedding_service: EmbeddingService,
         document_processor: DocumentProcessor,
-        context=None
-    ) -> Tuple[List, FAISSIndex]:
-        """Process documents and build FAISS index (SRP)."""
+        context=None,
+    ) -> Tuple[List, FAISSIndex, object]:
+        """Process documents and build FAISS index (SRP). Returns embeddings to avoid recomputation."""
         # Load and process documents
         logger.info(f"📚 Loading documents from {kb_path}...")
         documents = document_processor.load_documents(kb_path)
@@ -91,14 +91,14 @@ class KnowledgeBaseManager:
         faiss_index.add_embeddings(embeddings)
         logger.info(f"✅ FAISS index built, initialized: {faiss_index.initialized}")
 
-        return documents, faiss_index
+        return documents, faiss_index, embeddings
 
     def update_document_store(
         self,
         documents: List,
         document_store: DocumentStore,
         document_processor: DocumentProcessor,
-        kb_path: Path
+        kb_path: Path,
     ):
         """Update document store with current documents (SRP)."""
         logger.info("Updating document store...")
@@ -119,11 +119,7 @@ class KnowledgeBaseManager:
                 document_store.store_document(file_path, file_hash, chunk_count, relative_path)
 
     async def load_from_cache_only(
-        self,
-        kb_path_str: str,
-        embedding_model: str,
-        chunk_size: int,
-        chunk_overlap: int
+        self, kb_path_str: str, embedding_model: str, chunk_size: int, chunk_overlap: int
     ) -> Tuple[List, FAISSIndex, EmbeddingService, DocumentStore]:
         """Load knowledge base ONLY from cache without any rebuilding (cache-only operation)."""
         kb_path = Path(kb_path_str)
@@ -133,16 +129,18 @@ class KnowledgeBaseManager:
 
         # Generate cache keys
         embeddings_key = self.persistence_strategy.key_generator.generate_embeddings_key(
-            kb_path_str, embedding_model, chunk_size, chunk_overlap)
+            kb_path_str, embedding_model, chunk_size, chunk_overlap
+        )
         index_key = self.persistence_strategy.key_generator.generate_index_key(
-            kb_path_str, embedding_model, chunk_size, chunk_overlap)
+            kb_path_str, embedding_model, chunk_size, chunk_overlap
+        )
 
         # Load directly from cache provider without factory fallback
         cache_result = self.persistence_strategy.provider.load_embeddings(embeddings_key)
         if cache_result is None:
             raise ValueError(f"No cached embeddings found for: {kb_path_str}")
 
-        _, documents, cached_dimension = cache_result  # Only need documents from cache
+        _, documents, _ = cache_result  # Only need documents from cache
         dimension = embedding_service.dimension
 
         # Load FAISS index from cache
@@ -155,7 +153,9 @@ class KnowledgeBaseManager:
         store_path = kb_path / "document_store.db"
         document_store = DocumentStore(str(store_path))
 
-        logger.info(f"✅ CACHE-ONLY: Loaded {len(documents)} documents from cache without rebuilding")
+        logger.info(
+            f"✅ CACHE-ONLY: Loaded {len(documents)} documents from cache without rebuilding"
+        )
         return documents, faiss_index, embedding_service, document_store
 
     async def update_cache_files(
@@ -163,27 +163,28 @@ class KnowledgeBaseManager:
         kb_path_str: str,
         embedding_model: str,
         documents: List,
-        embedding_service: EmbeddingService,
+        embeddings_array: object,
         faiss_index: FAISSIndex,
         chunk_size: int,
-        chunk_overlap: int
+        chunk_overlap: int,
     ) -> bool:
-        """Update cache files with current data (SRP)."""
+        """Update cache files with current data (SRP). Uses provided embeddings to avoid recomputation."""
         try:
             logger.info("💾 Saving data to cache...")
 
             # Use the persistence strategy to save updated embeddings and index
             embeddings_key = self.persistence_strategy.key_generator.generate_embeddings_key(
-                kb_path_str, embedding_model, chunk_size, chunk_overlap)
+                kb_path_str, embedding_model, chunk_size, chunk_overlap
+            )
             index_key = self.persistence_strategy.key_generator.generate_index_key(
-                kb_path_str, embedding_model, chunk_size, chunk_overlap)
+                kb_path_str, embedding_model, chunk_size, chunk_overlap
+            )
 
-            # Save embeddings to cache
+            # Save embeddings to cache (using provided embeddings instead of recomputing)
             logger.info("💾 Saving embeddings to cache...")
-            texts = [doc.content for doc in documents]
-            embeddings_array = embedding_service.get_embeddings(texts)
             save_embeddings_ok = self.persistence_strategy.provider.save_embeddings(
-                embeddings_key, embeddings_array, documents)
+                embeddings_key, embeddings_array, documents
+            )
             logger.info(f"💾 Save embeddings result: {save_embeddings_ok}")
 
             # Save index to cache
@@ -208,7 +209,7 @@ class KnowledgeBaseManager:
         embedding_model: str,
         chunk_size: int,
         chunk_overlap: int,
-        context=None
+        context=None,
     ) -> Tuple[List, FAISSIndex, EmbeddingService, DocumentStore]:
         """Refresh knowledge base with incremental updates based on file changes."""
         kb_path = Path(kb_path_str)
@@ -229,7 +230,7 @@ class KnowledgeBaseManager:
             current_hash = document_store.compute_file_hash(file_path)
             stored_info = document_store.get_document_info(relative_path)
 
-            if not stored_info or stored_info['file_hash'] != current_hash:
+            if not stored_info or stored_info["file_hash"] != current_hash:
                 has_changes = True
                 logger.info(f"📝 REFRESH: Detected changes in {relative_path}")
                 break
@@ -241,14 +242,16 @@ class KnowledgeBaseManager:
         embedding_service = self.get_or_create_embedding_service(embedding_model)
 
         # Use persistence strategy - it will detect changes and rebuild if needed
-        _, documents, faiss_index = await self.persistence_strategy.get_or_create_knowledge_base(
-            kb_path_str,
-            embedding_model,
-            chunk_size,
-            chunk_overlap,
-            lambda: self._create_knowledge_base_factory(
-                kb_path_str, embedding_service, document_processor, context
-            ),
+        embeddings, documents, faiss_index = (
+            await self.persistence_strategy.get_or_create_knowledge_base(
+                kb_path_str,
+                embedding_model,
+                chunk_size,
+                chunk_overlap,
+                lambda: self._create_knowledge_base_factory(
+                    kb_path_str, embedding_service, document_processor, context
+                ),
+            )
         )
 
         # Update document store with current file info
@@ -257,8 +260,13 @@ class KnowledgeBaseManager:
         # Update cache files if there were changes
         if has_changes:
             await self.update_cache_files(
-                kb_path_str, embedding_model, documents, embedding_service,
-                faiss_index, chunk_size, chunk_overlap
+                kb_path_str,
+                embedding_model,
+                documents,
+                embeddings,
+                faiss_index,
+                chunk_size,
+                chunk_overlap,
             )
 
         return documents, faiss_index, embedding_service, document_store
@@ -270,7 +278,7 @@ class KnowledgeBaseManager:
         chunk_size: int,
         chunk_overlap: int,
         clean_cache: bool = True,
-        context=None
+        context=None,
     ) -> Tuple[List, FAISSIndex, EmbeddingService, DocumentStore]:
         """Initialize knowledge base with all components (orchestration)."""
         kb_path = Path(kb_path_str)
@@ -287,14 +295,16 @@ class KnowledgeBaseManager:
         document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
         # Use persistence strategy for knowledge base creation
-        _, documents, faiss_index = await self.persistence_strategy.get_or_create_knowledge_base(
-            kb_path_str,
-            embedding_model,
-            chunk_size,
-            chunk_overlap,
-            lambda: self._create_knowledge_base_factory(
-                kb_path_str, embedding_service, document_processor, context
-            ),
+        embeddings, documents, faiss_index = (
+            await self.persistence_strategy.get_or_create_knowledge_base(
+                kb_path_str,
+                embedding_model,
+                chunk_size,
+                chunk_overlap,
+                lambda: self._create_knowledge_base_factory(
+                    kb_path_str, embedding_service, document_processor, context
+                ),
+            )
         )
 
         # Create document store
@@ -306,13 +316,20 @@ class KnowledgeBaseManager:
 
         # Update cache files
         await self.update_cache_files(
-            kb_path_str, embedding_model, documents, embedding_service,
-            faiss_index, chunk_size, chunk_overlap
+            kb_path_str,
+            embedding_model,
+            documents,
+            embeddings,
+            faiss_index,
+            chunk_size,
+            chunk_overlap,
         )
 
         return documents, faiss_index, embedding_service, document_store
 
-    def get_or_create_document_processor(self, chunk_size: int, chunk_overlap: int) -> DocumentProcessor:
+    def get_or_create_document_processor(
+        self, chunk_size: int, chunk_overlap: int
+    ) -> DocumentProcessor:
         """Get or create document processor with given settings."""
         return DocumentProcessor(chunk_size, chunk_overlap)
 
@@ -323,6 +340,7 @@ class KnowledgeBaseManager:
 
         try:
             import shutil
+
             cache_dir = kb_path / ".rag_cache"
             if cache_dir.exists():
                 logger.info(f"🧹 Cleaning cache directory: {cache_dir}")
@@ -338,15 +356,12 @@ class KnowledgeBaseManager:
         kb_path: str,
         embedding_service: EmbeddingService,
         document_processor: DocumentProcessor,
-        context=None
+        context=None,
     ):
         """Factory function for knowledge base creation."""
-        documents, faiss_index = await self.process_documents_and_build_index(
+        documents, faiss_index, embeddings = await self.process_documents_and_build_index(
             Path(kb_path), embedding_service, document_processor, context
         )
 
-        # Generate embeddings for return (needed by persistence layer)
-        texts = [doc.content for doc in documents]
-        embeddings = embedding_service.get_embeddings(texts)
-
+        # Return embeddings computed during index building (no recomputation needed)
         return embeddings, documents, faiss_index
