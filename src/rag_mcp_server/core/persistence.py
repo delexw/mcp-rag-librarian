@@ -102,10 +102,11 @@ class PersistenceStrategy:
     """Open/Closed: Can be extended with new strategies (OCP)"""
 
     def __init__(self, provider: PersistenceProvider, cache_manager: CacheManager,
-                 key_generator: CacheKeyGenerator):
+                 key_generator: CacheKeyGenerator, config_manager=None):
         self.provider = provider
         self.cache_manager = cache_manager
         self.key_generator = key_generator
+        self.config_manager = config_manager
 
     async def get_or_create_knowledge_base(self, kb_path: str, embedding_model: str,
                                          chunk_size: int, chunk_overlap: int,
@@ -170,22 +171,25 @@ class PersistenceStrategy:
             logger.error(f"💥 PERSISTENCE: Factory function failed: {e}")
             raise
 
-        # Save to cache
-        logger.info("💾 PERSISTENCE: Saving to cache...")
-        try:
-            logger.info("💾 PERSISTENCE: Saving embeddings...")
-            save_embeddings_ok = self.provider.save_embeddings(embeddings_key, embeddings, documents)
-            logger.info(f"💾 PERSISTENCE: Save embeddings result: {save_embeddings_ok}")
+        # Save to cache (only if persistence is enabled)
+        if self.config_manager and self.config_manager.is_persistence_enabled():
+            logger.info("💾 PERSISTENCE: Saving to cache...")
+            try:
+                logger.info("💾 PERSISTENCE: Saving embeddings...")
+                save_embeddings_ok = self.provider.save_embeddings(embeddings_key, embeddings, documents)
+                logger.info(f"💾 PERSISTENCE: Save embeddings result: {save_embeddings_ok}")
 
-            logger.info("💾 PERSISTENCE: Saving index...")
-            save_index_ok = self.provider.save_index(index_key, index)
-            logger.info(f"💾 PERSISTENCE: Save index result: {save_index_ok}")
+                logger.info("💾 PERSISTENCE: Saving index...")
+                save_index_ok = self.provider.save_index(index_key, index)
+                logger.info(f"💾 PERSISTENCE: Save index result: {save_index_ok}")
 
-            logger.info("🎉 PERSISTENCE: Successfully saved knowledge base to cache")
-        except Exception as e:
-            logger.error(f"💥 PERSISTENCE: Failed to save to cache: {e}")
-            import traceback
-            logger.error(f"💥 PERSISTENCE: Save traceback: {traceback.format_exc()}")
+                logger.info("🎉 PERSISTENCE: Successfully saved knowledge base to cache")
+            except Exception as e:
+                logger.error(f"💥 PERSISTENCE: Failed to save to cache: {e}")
+                import traceback
+                logger.error(f"💥 PERSISTENCE: Save traceback: {traceback.format_exc()}")
+        else:
+            logger.info("🚫 PERSISTENCE: Cache disabled, skipping save")
 
         logger.info("🏁 PERSISTENCE: Returning knowledge base")
         return embeddings, documents, index

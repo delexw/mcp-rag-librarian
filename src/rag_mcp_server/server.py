@@ -76,7 +76,8 @@ class RAGServer:
 
         # Knowledge base management
         kb_manager = KnowledgeBaseManager(
-            persistence_strategy=PersistenceFactory.create_file_persistence_strategy()
+            persistence_strategy=PersistenceFactory.create_file_persistence_strategy(config_manager),
+            config_manager=config_manager
         )
         service_container.register_instance(KnowledgeBaseManagerInterface, kb_manager)
 

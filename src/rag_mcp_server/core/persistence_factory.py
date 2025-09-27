@@ -10,7 +10,7 @@ class PersistenceFactory:
     """Factory for creating persistence components (DIP - Dependency Injection)"""
 
     @staticmethod
-    def create_file_persistence_strategy() -> PersistenceStrategy:
+    def create_file_persistence_strategy(config_manager=None) -> PersistenceStrategy:
         """Create file-based persistence strategy"""
         # Create dependencies
         provider = FilePersistenceProvider()
@@ -19,10 +19,10 @@ class PersistenceFactory:
         key_generator = CacheKeyGenerator(hasher)
 
         # Inject dependencies
-        return PersistenceStrategy(provider, cache_manager, key_generator)
+        return PersistenceStrategy(provider, cache_manager, key_generator, config_manager)
 
     @staticmethod
-    def create_s3_persistence_strategy(bucket_name: str) -> PersistenceStrategy:
+    def create_s3_persistence_strategy(bucket_name: str, config_manager=None) -> PersistenceStrategy:
         """Create S3-based persistence strategy (future extension)"""
         from .file_persistence import S3PersistenceProvider
 
@@ -33,4 +33,4 @@ class PersistenceFactory:
         key_generator = CacheKeyGenerator(hasher)
 
         # Inject dependencies
-        return PersistenceStrategy(provider, cache_manager, key_generator)
+        return PersistenceStrategy(provider, cache_manager, key_generator, config_manager)

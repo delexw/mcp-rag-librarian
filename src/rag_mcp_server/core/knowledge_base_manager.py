@@ -26,15 +26,16 @@ class KnowledgeBaseManager:
     - Cache management
     """
 
-    def __init__(self, embedding_service_factory=None, persistence_strategy=None):
+    def __init__(self, embedding_service_factory=None, persistence_strategy=None, config_manager=None):
         """Initialize with dependency injection (DIP)."""
         self.embedding_service_factory = embedding_service_factory
+        self.config_manager = config_manager
         self.persistence_strategy = persistence_strategy or self._create_default_persistence()
         self._embedding_service_cache = {}
 
     def _create_default_persistence(self):
         """Create default persistence strategy."""
-        return PersistenceFactory.create_file_persistence_strategy()
+        return PersistenceFactory.create_file_persistence_strategy(self.config_manager)
 
     def get_or_create_embedding_service(self, embedding_model: str) -> EmbeddingService:
         """Get cached embedding service or create new one (SRP)."""
@@ -169,6 +170,11 @@ class KnowledgeBaseManager:
         chunk_overlap: int,
     ) -> bool:
         """Update cache files with current data (SRP). Uses provided embeddings to avoid recomputation."""
+        # Check if persistence is enabled
+        if not self.config_manager or not self.config_manager.is_persistence_enabled():
+            logger.info("🚫 Cache disabled, skipping cache file update")
+            return True
+
         try:
             logger.info("💾 Saving data to cache...")
 
@@ -242,7 +248,7 @@ class KnowledgeBaseManager:
         embedding_service = self.get_or_create_embedding_service(embedding_model)
 
         # Use persistence strategy - it will detect changes and rebuild if needed
-        embeddings, documents, faiss_index = (
+        _, documents, faiss_index = (
             await self.persistence_strategy.get_or_create_knowledge_base(
                 kb_path_str,
                 embedding_model,
@@ -257,17 +263,8 @@ class KnowledgeBaseManager:
         # Update document store with current file info
         self.update_document_store(documents, document_store, document_processor, kb_path)
 
-        # Update cache files if there were changes
-        if has_changes:
-            await self.update_cache_files(
-                kb_path_str,
-                embedding_model,
-                documents,
-                embeddings,
-                faiss_index,
-                chunk_size,
-                chunk_overlap,
-            )
+        # Cache files are already saved by get_or_create_knowledge_base when changes are detected
+        # No need to call update_cache_files again (avoiding duplication)
 
         return documents, faiss_index, embedding_service, document_store
 
@@ -295,7 +292,7 @@ class KnowledgeBaseManager:
         document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
         # Use persistence strategy for knowledge base creation
-        embeddings, documents, faiss_index = (
+        _, documents, faiss_index = (
             await self.persistence_strategy.get_or_create_knowledge_base(
                 kb_path_str,
                 embedding_model,
@@ -314,16 +311,8 @@ class KnowledgeBaseManager:
         # Update document store
         self.update_document_store(documents, document_store, document_processor, kb_path)
 
-        # Update cache files
-        await self.update_cache_files(
-            kb_path_str,
-            embedding_model,
-            documents,
-            embeddings,
-            faiss_index,
-            chunk_size,
-            chunk_overlap,
-        )
+        # Cache files are already saved by get_or_create_knowledge_base
+        # No need to call update_cache_files again (avoiding duplication)
 
         return documents, faiss_index, embedding_service, document_store
 
