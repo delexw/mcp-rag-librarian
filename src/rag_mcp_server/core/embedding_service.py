@@ -5,11 +5,51 @@ Handles text embedding operations using SentenceTransformers.
 """
 
 import logging
+import time
 from typing import List
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
 logger = logging.getLogger(__name__)
+
+
+def _load_model_with_retry(model_name: str, max_retries: int = 3, base_delay: float = 2.0) -> SentenceTransformer:
+    """
+    Load SentenceTransformer model with retry logic for handling download timeouts.
+
+    Args:
+        model_name: Name of the model to load
+        max_retries: Maximum number of retry attempts
+        base_delay: Base delay in seconds for exponential backoff
+
+    Returns:
+        Loaded SentenceTransformer model
+
+    Raises:
+        RuntimeError: If all retry attempts fail
+    """
+    last_exception = None
+
+    for attempt in range(max_retries + 1):
+        try:
+            if attempt > 0:
+                delay = base_delay * (2 ** (attempt - 1))  # Exponential backoff
+                logger.info(f"Retrying model download (attempt {attempt + 1}/{max_retries + 1}) after {delay}s delay...")
+                time.sleep(delay)
+
+            logger.info(f"Loading model: {model_name} (attempt {attempt + 1})")
+            model = SentenceTransformer(model_name)
+            logger.info(f"Successfully loaded model: {model_name}")
+            return model
+
+        except Exception as e:
+            last_exception = e
+            if attempt < max_retries:
+                logger.warning(f"Model download failed (attempt {attempt + 1}): {e}")
+            else:
+                logger.error(f"Final model download attempt failed: {e}")
+
+    raise RuntimeError(f"Failed to load model '{model_name}' after {max_retries + 1} attempts. Last error: {last_exception}")
 
 
 class EmbeddingService:
@@ -29,8 +69,8 @@ class EmbeddingService:
             self.model_name = model_name
             logger.info(f"Attempting to load embedding model: {model_name}")
             
-            # Load the model with explicit logging
-            self.model = SentenceTransformer(model_name)
+            # Load the model with retry logic
+            self.model = _load_model_with_retry(model_name)
             
             # Verify the model loaded correctly by checking its actual name
             actual_model_name = getattr(self.model, '_model_name', None) or getattr(self.model, 'model_name', None)
@@ -59,7 +99,7 @@ class EmbeddingService:
                 # Fallback to a known working model
                 fallback_model = "all-MiniLM-L6-v2"
                 self.model_name = fallback_model
-                self.model = SentenceTransformer(fallback_model)
+                self.model = _load_model_with_retry(fallback_model)
                 self.dimension = self.model.get_sentence_embedding_dimension()
                 logger.warning(f"Fallback successful: Using {fallback_model} instead of {model_name}")
             except Exception as fallback_error:
