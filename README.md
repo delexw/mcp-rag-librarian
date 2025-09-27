@@ -46,6 +46,7 @@ A Model Context Protocol (MCP) server for Retrieval-Augmented Generation (RAG) o
 - **Incremental Updates**: Smart document tracking to only process new or changed files
 - **Persistent Caching**: FAISS index and embeddings persistence with `--persist-cache` flag
 - **Auto-Load on Startup**: Cached knowledge bases load automatically when server starts
+- **Progress Notifications**: Real-time progress updates during long-running operations via MCP progress notifications
 - **SOLID Architecture**: Clean, extensible persistence layer following SOLID principles
 - **SQLite Document Store**: Document metadata and change tracking
 - **Flexible Configuration**: Customizable embedding models, chunk sizes, and search parameters
@@ -245,6 +246,75 @@ Add the `--persist-cache` flag to your configuration:
 2. **Server Restart**: Cached data loads automatically at startup
 3. **Ready to Search**: No manual initialization needed
 
+## Progress Notifications
+
+**🆕 NEW**: The server now supports **MCP progress notifications** for real-time updates during long-running operations.
+
+### How Progress Notifications Work
+
+When a client (like Claude Desktop or Claude Code) supports MCP progress notifications, the server will send real-time progress updates during:
+
+- **Knowledge Base Initialization**: Progress through document loading, embedding generation, and index building
+- **Knowledge Base Refresh**: Progress through change detection, document processing, and index updates
+
+### Progress Notification Features
+
+- **Real-Time Updates**: See progress as operations happen, not just at completion
+- **Detailed Messages**: Descriptive progress messages (e.g., "Loading documents...", "Generating embeddings for 1,247 chunks...")
+- **Percentage Tracking**: Progress bars with completion percentages (0-100%)
+- **Automatic Detection**: Works automatically when client supports progress notifications
+
+### Example Progress Flow
+
+**During Knowledge Base Initialization:**
+```
+0%   - "Starting knowledge base initialization..."
+5%   - "Initializing persistence strategy..."
+10%  - "Loading knowledge base from cache or creating new..."
+15%  - "Initializing embedding service..."
+25%  - "Loading and processing documents..."
+40%  - "Generating embeddings for 1,247 chunks..."
+70%  - "Building FAISS search index..."
+75%  - "Setting up document store and finalizing..."
+90%  - "Updating global state..."
+100% - "Knowledge base initialization complete!"
+```
+
+**During Knowledge Base Refresh:**
+```
+0%   - "Starting knowledge base refresh..."
+10%  - "Scanning for file changes..."
+25%  - "Detecting changes in existing files..."
+30%  - "Processing 3 removed files..."
+40%  - "Reprocessing 5 changed documents..."
+60%  - "Regenerating embeddings for 234 chunks..."
+80%  - "Rebuilding search index..."
+95%  - "Updating global state..."
+100% - "Knowledge base refresh complete!"
+```
+
+### Client Support
+
+Progress notifications work automatically with MCP clients that support the progress notification protocol:
+
+- ✅ **Claude Code**: Full progress notification support
+- ✅ **Claude Desktop**: Full progress notification support
+- ✅ **Cursor**: Full progress notification support
+- ✅ **Cline**: Full progress notification support
+- ✅ **Windsurf**: Full progress notification support
+
+### Technical Details
+
+Progress notifications use the MCP progress notification protocol:
+- **Protocol**: JSON-RPC 2.0 notifications with `notifications/progress` method
+- **Token-Based**: Each operation gets a unique progress token
+- **Optional**: Gracefully degrades when client doesn't support progress notifications
+- **Rate-Limited**: Progress updates are sent at reasonable intervals
+
+### Disabling Progress Notifications
+
+Progress notifications are automatically enabled when supported by the client. They cannot be disabled, but if your client doesn't support progress notifications, no extra overhead is incurred.
+
 ## Usage Examples
 
 ### Sample LLM Queries
@@ -342,13 +412,15 @@ The following tools are available:
 
 ### 1. initialize_knowledge_base
 
-Initialize a knowledge base from a directory of documents.
+Initialize a knowledge base from a directory of documents with real-time progress notifications.
 
 **Parameters:**
 - `knowledge_base_path` (optional): Path to document directory - defaults to server config
 - `embedding_model` (optional): Model name for embeddings - defaults to "ibm-granite/granite-embedding-278m-multilingual"
 - `chunk_size` (optional): Maximum chunk size in characters - defaults to 500
 - `chunk_overlap` (optional): Chunk overlap size in characters - defaults to 200
+
+**Progress Notifications:** ✅ Provides real-time progress updates during document loading, embedding generation, and index building.
 
 **Example Tool Call:**
 ```json
@@ -394,10 +466,12 @@ Perform semantic search on the knowledge base.
 
 ### 3. refresh_knowledge_base
 
-Update the knowledge base with new or changed documents.
+Update the knowledge base with new or changed documents with real-time progress notifications.
 
 **Parameters:**
 - `knowledge_base_path` (optional): Path to knowledge base - defaults to current KB
+
+**Progress Notifications:** ✅ Provides real-time progress updates during change detection, document reprocessing, and index rebuilding.
 
 **Example Tool Call:**
 ```json

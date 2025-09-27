@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, Union
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.fastmcp.server import Context
 
 from .core.document_processor import DocumentProcessor
 from .core.embedding_service import EmbeddingService
@@ -61,10 +62,14 @@ def initialize_persistence():
     return rag_state["persistence_strategy"]
 
 
-def create_knowledge_base_factory(kb_path: str, embedding_model: str,
-                                       chunk_size: int, chunk_overlap: int):
+async def create_knowledge_base_factory(
+    kb_path: str, embedding_model: str, chunk_size: int, chunk_overlap: int, context: Context = None
+):
     """Factory function to create knowledge base components"""
     logger.info(f"🏭 FACTORY: Starting factory for {kb_path}, model: {embedding_model}")
+
+    if context:
+        await context.report_progress(15, 100, "Initializing embedding service...")
 
     # Get or create cached embedding service
     logger.info(f"🔍 FACTORY: Checking embedding service cache for model: {embedding_model}")
@@ -77,11 +82,16 @@ def create_knowledge_base_factory(kb_path: str, embedding_model: str,
     else:
         logger.info(f"🧠 FACTORY: Creating new EmbeddingService for {embedding_model}...")
         embedding_service = EmbeddingService(embedding_model)
-        logger.info(f"✅ FACTORY: New EmbeddingService created, dimension: {embedding_service.dimension}")
+        logger.info(
+            f"✅ FACTORY: New EmbeddingService created, dimension: {embedding_service.dimension}"
+        )
 
         # Cache the service for future use
         embedding_service_cache[embedding_model] = embedding_service
         logger.info(f"💾 FACTORY: Cached EmbeddingService for {embedding_model}")
+
+    if context:
+        await context.report_progress(25, 100, "Loading and processing documents...")
 
     logger.info(f"📄 FACTORY: Initializing DocumentProcessor...")
     document_processor = DocumentProcessor(chunk_size, chunk_overlap)
@@ -94,6 +104,11 @@ def create_knowledge_base_factory(kb_path: str, embedding_model: str,
         raise ValueError(f"No documents found in {kb_path}")
     logger.info(f"✅ FACTORY: Loaded {len(documents)} document chunks")
 
+    if context:
+        await context.report_progress(
+            40, 100, f"Generating embeddings for {len(documents)} chunks..."
+        )
+
     # Generate embeddings
     logger.info(f"🔢 FACTORY: Generating embeddings for {len(documents)} chunks...")
     texts = [doc.content for doc in documents]
@@ -101,6 +116,9 @@ def create_knowledge_base_factory(kb_path: str, embedding_model: str,
 
     embeddings = embedding_service.get_embeddings(texts)
     logger.info(f"✅ FACTORY: Generated embeddings with shape: {embeddings.shape}")
+
+    if context:
+        await context.report_progress(70, 100, "Building FAISS search index...")
 
     # Build FAISS index
     logger.info(f"🗂️ FACTORY: Building FAISS index with dimension {embedding_service.dimension}...")
@@ -157,6 +175,7 @@ async def initialize_knowledge_base(
     embedding_model: Union[str, None] = None,
     chunk_size: Union[int, None] = None,
     chunk_overlap: Union[int, None] = None,
+    context: Context = None,
 ) -> str:
     """Initialize a knowledge base from documents.
 
@@ -182,6 +201,10 @@ async def initialize_knowledge_base(
         logger.info(f"Chunk size: {chunk_size}")
         logger.info(f"Chunk overlap: {chunk_overlap}")
 
+        # Report initial progress
+        if context:
+            await context.report_progress(0, 100, "Starting knowledge base initialization...")
+
         kb_path = Path(kb_path_str)
         if not kb_path.exists():
             raise ValueError(f"Knowledge base directory does not exist: {kb_path_str}")
@@ -192,18 +215,35 @@ async def initialize_knowledge_base(
         if persist_enabled:
             logger.info("🚀 INIT: Using persistence strategy for fast initialization...")
 
+            if context:
+                await context.report_progress(5, 100, "Initializing persistence strategy...")
+
             # Initialize persistence if needed
             if rag_state["persistence_strategy"] is None:
                 rag_state["persistence_strategy"] = initialize_persistence()
 
+            if context:
+                await context.report_progress(
+                    10, 100, "Loading knowledge base from cache or creating new..."
+                )
+
             # This will load from cache (fast) or create new (slow)
-            _, documents, faiss_index = rag_state["persistence_strategy"].get_or_create_knowledge_base(
+            _, documents, faiss_index = rag_state[
+                "persistence_strategy"
+            ].get_or_create_knowledge_base(
                 kb_path_str,
                 embedding_model,
                 chunk_size,
                 chunk_overlap,
-                lambda: create_knowledge_base_factory(kb_path_str, embedding_model, chunk_size, chunk_overlap)
+                lambda: create_knowledge_base_factory(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap, context
+                ),
             )
+
+            if context:
+                await context.report_progress(
+                    60, 100, f"Processed {len(documents)} document chunks"
+                )
 
             # Get embedding service from cache (it was cached by factory)
             embedding_service = rag_state["embedding_service_cache"].get(embedding_model)
@@ -214,6 +254,10 @@ async def initialize_knowledge_base(
         else:
             # Legacy initialization without persistence
             logger.info(f"Initializing EmbeddingService with model: {embedding_model}")
+
+            if context:
+                await context.report_progress(10, 100, "Initializing embedding service...")
+
             embedding_service = EmbeddingService(embedding_model)
 
             # Continue with legacy path for non-persistent initialization
@@ -223,8 +267,12 @@ async def initialize_knowledge_base(
             document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
             # Load and process documents using legacy method
-            _, documents, faiss_index = create_knowledge_base_factory(
-                kb_path_str, embedding_model, chunk_size, chunk_overlap)
+            _, documents, faiss_index = await create_knowledge_base_factory(
+                kb_path_str, embedding_model, chunk_size, chunk_overlap, context
+            )
+
+        if context:
+            await context.report_progress(75, 100, "Setting up document store and finalizing...")
 
         # Create document store in the same directory as the knowledge base
         logger.info("Initializing DocumentStore...")
@@ -256,6 +304,9 @@ async def initialize_knowledge_base(
 
         # SOLID: Cache saving is handled by persistence strategy
 
+        if context:
+            await context.report_progress(90, 100, "Updating global state...")
+
         # Update global state
         cache_key = get_kb_cache_key(kb_path_str, embedding_model)
         rag_state.update(
@@ -274,6 +325,9 @@ async def initialize_knowledge_base(
         # Get model info for verification
         model_info = embedding_service.get_model_info()
         actual_model_used = model_info.get("actual_model_path", model_info.get("model_name"))
+
+        if context:
+            await context.report_progress(100, 100, "Knowledge base initialization complete!")
 
         result_message = f"""Knowledge base initialized successfully!
 - Path: {kb_path_str}
@@ -294,9 +348,14 @@ async def initialize_knowledge_base(
 
 
 @app.tool()
-async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -> str:
+async def refresh_knowledge_base(
+    knowledge_base_path: Union[str, None] = None, context: Context = None
+) -> str:
     """Refresh the knowledge base with new or changed documents."""
     try:
+        if context:
+            await context.report_progress(0, 100, "Starting knowledge base refresh...")
+
         kb_path_str = resolve_knowledge_base_path(knowledge_base_path)
         if not rag_state.get("current_kb_path") == kb_path_str:
             return (
@@ -315,6 +374,9 @@ async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -
             f"Refreshing with current chunk settings: size={document_processor.chunk_size}, overlap={document_processor.chunk_overlap}"
         )
 
+        if context:
+            await context.report_progress(10, 100, "Scanning for file changes...")
+
         # Use document processor's centralized file discovery method
         current_files = document_processor.find_documents(kb_path)
 
@@ -322,6 +384,9 @@ async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -
 
         stored_relative_paths = document_store.get_all_document_names()
         removed_files = stored_relative_paths - current_relative_paths
+
+        if context:
+            await context.report_progress(25, 100, "Detecting changes in existing files...")
 
         new_or_changed_files = []
         for file_path in current_files:
@@ -331,18 +396,40 @@ async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -
                 new_or_changed_files.append((file_path, file_hash, relative_path))
 
         if not new_or_changed_files and not removed_files:
+            if context:
+                await context.report_progress(100, 100, "No changes detected")
             return "No changes detected in knowledge base."
+
+        if context:
+            await context.report_progress(
+                30, 100, f"Processing {len(removed_files)} removed files..."
+            )
 
         for relative_path in removed_files:
             document_store.remove_document(relative_path)
 
         if removed_files or new_or_changed_files:
+            if context:
+                await context.report_progress(
+                    40, 100, f"Reprocessing {len(new_or_changed_files)} changed documents..."
+                )
+
             documents = document_processor.load_documents(kb_path)
+
+            if context:
+                await context.report_progress(
+                    60, 100, f"Regenerating embeddings for {len(documents)} chunks..."
+                )
+
             faiss_index = FAISSIndex(embedding_service.dimension)
 
             if documents:
                 texts = [doc.content for doc in documents]
                 embeddings = embedding_service.get_embeddings(texts)
+
+                if context:
+                    await context.report_progress(80, 100, "Rebuilding search index...")
+
                 faiss_index.add_embeddings(embeddings)
 
                 relative_path_chunks = {}
@@ -358,7 +445,13 @@ async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -
                             file_path, file_hash, chunk_count, relative_path
                         )
 
+            if context:
+                await context.report_progress(95, 100, "Updating global state...")
+
             rag_state.update({"faiss_index": faiss_index, "documents": documents})
+
+            if context:
+                await context.report_progress(100, 100, "Knowledge base refresh complete!")
 
             return f"""Knowledge base refreshed successfully!
 - Removed files: {len(removed_files)}
@@ -373,7 +466,10 @@ async def refresh_knowledge_base(knowledge_base_path: Union[str, None] = None) -
 
 @app.tool()
 async def semantic_search(
-    query: str, knowledge_base_path: Union[str, None] = None, top_k: Union[int, None] = None, include_scores: bool = False
+    query: str,
+    knowledge_base_path: Union[str, None] = None,
+    top_k: Union[int, None] = None,
+    include_scores: bool = False,
 ) -> str:
     """Perform semantic search on the knowledge base."""
     try:
@@ -384,7 +480,9 @@ async def semantic_search(
 
         # Check if knowledge base is initialized
         if not rag_state.get("current_kb_path") == kb_path_str:
-            return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
+            return (
+                f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
+            )
 
         embedding_service = rag_state["embedding_service"]
         faiss_index = rag_state["faiss_index"]
@@ -577,7 +675,7 @@ def startup_auto_load():
             embedding_model,
             chunk_size,
             chunk_overlap,
-            lambda: None  # Don't create if cache miss - just skip startup load
+            lambda: None,  # Don't create if cache miss - just skip startup load
         )
 
         if documents:
@@ -592,6 +690,7 @@ def startup_auto_load():
             logger.info("📊 STARTUP: Initializing DocumentStore...")
             from pathlib import Path
             from rag_mcp_server.core.document_store import DocumentStore
+
             kb_path_obj = Path(kb_path)
             store_path = kb_path_obj / "document_store.db"
             document_store = DocumentStore(str(store_path))
@@ -600,18 +699,24 @@ def startup_auto_load():
             document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
             # Update global state for immediate tool availability
-            rag_state.update({
-                "embedding_service": embedding_service,
-                "document_processor": document_processor,
-                "faiss_index": faiss_index,
-                "documents": documents,
-                "current_kb_path": kb_path,
-                "document_store": document_store,
-            })
+            rag_state.update(
+                {
+                    "embedding_service": embedding_service,
+                    "document_processor": document_processor,
+                    "faiss_index": faiss_index,
+                    "documents": documents,
+                    "current_kb_path": kb_path,
+                    "document_store": document_store,
+                }
+            )
 
-            logger.info(f"✅ STARTUP: Knowledge base ready! {len(documents)} docs loaded from cache")
+            logger.info(
+                f"✅ STARTUP: Knowledge base ready! {len(documents)} docs loaded from cache"
+            )
         else:
-            logger.info("📝 STARTUP: No cache found, knowledge base will initialize on first tool call")
+            logger.info(
+                "📝 STARTUP: No cache found, knowledge base will initialize on first tool call"
+            )
 
     except Exception as e:
         # Don't fail server startup if cache loading fails
@@ -650,7 +755,11 @@ def parse_arguments():
         help=f"Default number of search results (default: {DEFAULT_VALUES['top_k']})",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--persist-cache", action="store_true", help="Enable persistence of FAISS index and embeddings cache")
+    parser.add_argument(
+        "--persist-cache",
+        action="store_true",
+        help="Enable persistence of FAISS index and embeddings cache",
+    )
     return parser.parse_args()
 
 
