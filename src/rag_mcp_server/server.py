@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Union
 
 from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp.server import Context
+from mcp.server.fastmcp import Context
 
 # SOLID architecture components
 from .core.service_container import service_container
