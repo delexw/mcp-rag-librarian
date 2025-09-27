@@ -596,9 +596,13 @@ def startup_auto_load():
             store_path = kb_path_obj / "document_store.db"
             document_store = DocumentStore(str(store_path))
 
+            # Create document processor with the cached configuration
+            document_processor = DocumentProcessor(chunk_size, chunk_overlap)
+
             # Update global state for immediate tool availability
             rag_state.update({
                 "embedding_service": embedding_service,
+                "document_processor": document_processor,
                 "faiss_index": faiss_index,
                 "documents": documents,
                 "current_kb_path": kb_path,
