@@ -107,7 +107,7 @@ class PersistenceStrategy:
         self.cache_manager = cache_manager
         self.key_generator = key_generator
 
-    def get_or_create_knowledge_base(self, kb_path: str, embedding_model: str,
+    async def get_or_create_knowledge_base(self, kb_path: str, embedding_model: str,
                                          chunk_size: int, chunk_overlap: int,
                                          factory_func):
         """Get knowledge base from cache or create new one"""
@@ -160,7 +160,7 @@ class PersistenceStrategy:
         # Create new knowledge base
         logger.info("🏗️ PERSISTENCE: Creating new knowledge base via factory...")
         try:
-            result = factory_func()
+            result = await factory_func()
             if result is None:
                 logger.info("🔄 PERSISTENCE: Factory returned None (cache miss skip)")
                 return None, [], None
