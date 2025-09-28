@@ -26,7 +26,9 @@ class KnowledgeBaseManager:
     - Cache management
     """
 
-    def __init__(self, embedding_service_factory=None, persistence_strategy=None, config_manager=None):
+    def __init__(
+        self, embedding_service_factory=None, persistence_strategy=None, config_manager=None
+    ):
         """Initialize with dependency injection (DIP)."""
         self.embedding_service_factory = embedding_service_factory
         self.config_manager = config_manager
@@ -216,7 +218,7 @@ class KnowledgeBaseManager:
         chunk_size: int,
         chunk_overlap: int,
         context=None,
-    ) -> Tuple[List, FAISSIndex, EmbeddingService, DocumentStore]:
+    ) -> Tuple[List, FAISSIndex, EmbeddingService, DocumentStore, bool]:
         """Refresh knowledge base with incremental updates based on file changes."""
         kb_path = Path(kb_path_str)
         if not kb_path.exists():
@@ -241,32 +243,32 @@ class KnowledgeBaseManager:
                 logger.info(f"📝 REFRESH: Detected changes in {relative_path}")
                 break
 
-        if not has_changes:
-            logger.info("✅ REFRESH: No changes detected, loading from cache")
-
-        # Get or create embedding service (reuse cached if available)
-        embedding_service = self.get_or_create_embedding_service(embedding_model)
-
-        # Use persistence strategy - it will detect changes and rebuild if needed
-        _, documents, faiss_index = (
-            await self.persistence_strategy.get_or_create_knowledge_base(
-                kb_path_str,
-                embedding_model,
-                chunk_size,
-                chunk_overlap,
-                lambda: self._create_knowledge_base_factory(
-                    kb_path_str, embedding_service, document_processor, context
-                ),
+        if has_changes:
+            logger.info("🔄 REFRESH: Changes detected, calling initialize_knowledge_base")
+            # Just call initialize_knowledge_base instead of duplicating logic
+            documents, faiss_index, embedding_service, document_store = (
+                await self.initialize_knowledge_base(
+                    kb_path_str,
+                    embedding_model,
+                    chunk_size,
+                    chunk_overlap,
+                    clean_cache=True,
+                    context=context,
+                )
             )
-        )
-
-        # Update document store with current file info
-        self.update_document_store(documents, document_store, document_processor, kb_path)
+        else:
+            logger.info("✅ REFRESH: No changes detected, skipping rebuild")
+            # Still need to return existing components - get them from cache without rebuilding
+            documents, faiss_index, embedding_service, document_store = (
+                await self.load_from_cache_only(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap
+                )
+            )
 
         # Cache files are already saved by get_or_create_knowledge_base when changes are detected
         # No need to call update_cache_files again (avoiding duplication)
 
-        return documents, faiss_index, embedding_service, document_store
+        return documents, faiss_index, embedding_service, document_store, has_changes
 
     async def initialize_knowledge_base(
         self,
@@ -292,16 +294,14 @@ class KnowledgeBaseManager:
         document_processor = DocumentProcessor(chunk_size, chunk_overlap)
 
         # Use persistence strategy for knowledge base creation
-        _, documents, faiss_index = (
-            await self.persistence_strategy.get_or_create_knowledge_base(
-                kb_path_str,
-                embedding_model,
-                chunk_size,
-                chunk_overlap,
-                lambda: self._create_knowledge_base_factory(
-                    kb_path_str, embedding_service, document_processor, context
-                ),
-            )
+        _, documents, faiss_index = await self.persistence_strategy.get_or_create_knowledge_base(
+            kb_path_str,
+            embedding_model,
+            chunk_size,
+            chunk_overlap,
+            lambda: self._create_knowledge_base_factory(
+                kb_path_str, embedding_service, document_processor, context
+            ),
         )
 
         # Create document store

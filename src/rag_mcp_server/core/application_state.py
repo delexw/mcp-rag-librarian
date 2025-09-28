@@ -15,7 +15,7 @@ from ..interfaces.knowledge_base_interfaces import (
     EmbeddingServiceInterface,
     DocumentProcessorInterface,
     SearchIndexInterface,
-    DocumentStoreInterface
+    DocumentStoreInterface,
 )
 
 logger = logging.getLogger(__name__)
@@ -53,18 +53,20 @@ class ApplicationState(ApplicationStateInterface):
         document_store: DocumentStoreInterface,
         documents: list,
         kb_path: str,
-        cache_key: str
+        cache_key: str,
     ):
         """Update all knowledge base components atomically."""
-        self._components.update({
-            "embedding_service": embedding_service,
-            "document_processor": document_processor,
-            "faiss_index": faiss_index,
-            "document_store": document_store,
-            "documents": documents,
-            "current_kb_path": kb_path,
-            "current_cache_key": cache_key,
-        })
+        self._components.update(
+            {
+                "embedding_service": embedding_service,
+                "document_processor": document_processor,
+                "faiss_index": faiss_index,
+                "document_store": document_store,
+                "documents": documents,
+                "current_kb_path": kb_path,
+                "current_cache_key": cache_key,
+            }
+        )
         self._initialized_kb_paths.add(cache_key)
         logger.info(f"Updated state for knowledge base: {kb_path}")
 
@@ -106,10 +108,12 @@ class ApplicationState(ApplicationStateInterface):
 
     def update_search_components(self, faiss_index: FAISSIndex, documents: list):
         """Update only search-related components."""
-        self._components.update({
-            "faiss_index": faiss_index,
-            "documents": documents,
-        })
+        self._components.update(
+            {
+                "faiss_index": faiss_index,
+                "documents": documents,
+            }
+        )
         logger.info("Updated search components")
 
     def get_persistence_strategy(self):

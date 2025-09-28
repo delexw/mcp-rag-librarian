@@ -69,6 +69,7 @@ class ConfigHasher:
     def hash_config(embedding_model: str, chunk_size: int, chunk_overlap: int) -> str:
         """Generate hash for configuration"""
         import hashlib
+
         config_str = f"{embedding_model}:{chunk_size}:{chunk_overlap}"
         return hashlib.md5(config_str.encode()).hexdigest()
 
@@ -79,20 +80,24 @@ class CacheKeyGenerator:
     def __init__(self, hasher: ConfigHasher):
         self.hasher = hasher
 
-    def generate_embeddings_key(self, kb_path: str, embedding_model: str,
-                               chunk_size: int, chunk_overlap: int) -> str:
+    def generate_embeddings_key(
+        self, kb_path: str, embedding_model: str, chunk_size: int, chunk_overlap: int
+    ) -> str:
         """Generate cache key for embeddings"""
         # Normalize path to ensure consistent cache keys
         from pathlib import Path
+
         normalized_path = str(Path(kb_path).resolve())
         config_hash = self.hasher.hash_config(embedding_model, chunk_size, chunk_overlap)
         return f"{normalized_path}:embeddings:{config_hash}"
 
-    def generate_index_key(self, kb_path: str, embedding_model: str,
-                          chunk_size: int, chunk_overlap: int) -> str:
+    def generate_index_key(
+        self, kb_path: str, embedding_model: str, chunk_size: int, chunk_overlap: int
+    ) -> str:
         """Generate cache key for index"""
         # Normalize path to ensure consistent cache keys
         from pathlib import Path
+
         normalized_path = str(Path(kb_path).resolve())
         config_hash = self.hasher.hash_config(embedding_model, chunk_size, chunk_overlap)
         return f"{normalized_path}:index:{config_hash}"
@@ -101,23 +106,30 @@ class CacheKeyGenerator:
 class PersistenceStrategy:
     """Open/Closed: Can be extended with new strategies (OCP)"""
 
-    def __init__(self, provider: PersistenceProvider, cache_manager: CacheManager,
-                 key_generator: CacheKeyGenerator, config_manager=None):
+    def __init__(
+        self,
+        provider: PersistenceProvider,
+        cache_manager: CacheManager,
+        key_generator: CacheKeyGenerator,
+        config_manager=None,
+    ):
         self.provider = provider
         self.cache_manager = cache_manager
         self.key_generator = key_generator
         self.config_manager = config_manager
 
-    async def get_or_create_knowledge_base(self, kb_path: str, embedding_model: str,
-                                         chunk_size: int, chunk_overlap: int,
-                                         factory_func):
+    async def get_or_create_knowledge_base(
+        self, kb_path: str, embedding_model: str, chunk_size: int, chunk_overlap: int, factory_func
+    ):
         """Get knowledge base from cache or create new one"""
         logger.info(f"🔄 PERSISTENCE: Starting get_or_create_knowledge_base for {kb_path}")
 
         embeddings_key = self.key_generator.generate_embeddings_key(
-            kb_path, embedding_model, chunk_size, chunk_overlap)
+            kb_path, embedding_model, chunk_size, chunk_overlap
+        )
         index_key = self.key_generator.generate_index_key(
-            kb_path, embedding_model, chunk_size, chunk_overlap)
+            kb_path, embedding_model, chunk_size, chunk_overlap
+        )
 
         logger.info(f"🔑 PERSISTENCE: Generated keys - embeddings: {embeddings_key}")
 
@@ -131,18 +143,24 @@ class PersistenceStrategy:
             if cached_embeddings_data:
                 logger.info("✅ PERSISTENCE: Found cached embeddings, unpacking...")
                 embeddings, documents, dimension = cached_embeddings_data
-                logger.info(f"📊 PERSISTENCE: Unpacked {len(documents)} docs, dimension: {dimension}")
+                logger.info(
+                    f"📊 PERSISTENCE: Unpacked {len(documents)} docs, dimension: {dimension}"
+                )
 
                 # Use cached dimension if available, otherwise fallback
                 if dimension:
                     logger.info(f"🎯 PERSISTENCE: Loading index with dimension {dimension}")
                     cached_index = self.provider.load_index(index_key, dimension)
                 else:
-                    logger.info("🔄 PERSISTENCE: No dimension in cache, trying to get from embeddings")
+                    logger.info(
+                        "🔄 PERSISTENCE: No dimension in cache, trying to get from embeddings"
+                    )
                     # Fallback: get dimension from embeddings array
-                    if hasattr(embeddings, 'shape') and len(embeddings.shape) > 1:
+                    if hasattr(embeddings, "shape") and len(embeddings.shape) > 1:
                         dimension = embeddings.shape[1]
-                        logger.info(f"📐 PERSISTENCE: Got dimension {dimension} from embeddings shape")
+                        logger.info(
+                            f"📐 PERSISTENCE: Got dimension {dimension} from embeddings shape"
+                        )
                         cached_index = self.provider.load_index(index_key, dimension)
 
                 if cached_index:
@@ -156,6 +174,7 @@ class PersistenceStrategy:
         except Exception as e:
             logger.error(f"💥 PERSISTENCE: Cache loading failed: {e}")
             import traceback
+
             logger.error(f"💥 PERSISTENCE: Traceback: {traceback.format_exc()}")
 
         # Create new knowledge base
@@ -166,7 +185,9 @@ class PersistenceStrategy:
                 logger.info("🔄 PERSISTENCE: Factory returned None (cache miss skip)")
                 return None, [], None
             embeddings, documents, index = result
-            logger.info(f"✅ PERSISTENCE: Factory created {len(documents)} docs, index initialized: {index.initialized if hasattr(index, 'initialized') else 'unknown'}")
+            logger.info(
+                f"✅ PERSISTENCE: Factory created {len(documents)} docs, index initialized: {index.initialized if hasattr(index, 'initialized') else 'unknown'}"
+            )
         except Exception as e:
             logger.error(f"💥 PERSISTENCE: Factory function failed: {e}")
             raise
@@ -176,7 +197,9 @@ class PersistenceStrategy:
             logger.info("💾 PERSISTENCE: Saving to cache...")
             try:
                 logger.info("💾 PERSISTENCE: Saving embeddings...")
-                save_embeddings_ok = self.provider.save_embeddings(embeddings_key, embeddings, documents)
+                save_embeddings_ok = self.provider.save_embeddings(
+                    embeddings_key, embeddings, documents
+                )
                 logger.info(f"💾 PERSISTENCE: Save embeddings result: {save_embeddings_ok}")
 
                 logger.info("💾 PERSISTENCE: Saving index...")
@@ -187,6 +210,7 @@ class PersistenceStrategy:
             except Exception as e:
                 logger.error(f"💥 PERSISTENCE: Failed to save to cache: {e}")
                 import traceback
+
                 logger.error(f"💥 PERSISTENCE: Save traceback: {traceback.format_exc()}")
         else:
             logger.info("🚫 PERSISTENCE: Cache disabled, skipping save")

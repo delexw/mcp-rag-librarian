@@ -6,10 +6,46 @@ following the Open/Closed principle.
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Union
 from abc import ABC, abstractmethod
 
+from .response_models import (
+    ErrorResponse,
+    InitializeKnowledgeBaseResponse,
+    KnowledgeBaseStatsResponse,
+    ListDocumentsResponse,
+    RefreshKnowledgeBaseResponse,
+    DocumentInfo,
+    ConfigurationInfo,
+    SearchResult,
+    IndexInfo,
+    EmbeddingModelInfo,
+    SearchConfigInfo,
+    DocumentStoreInfo,
+    ChunkingConfigInfo,
+    DocumentStats,
+    DocumentListItem,
+    ToolResponse,
+)
+
 logger = logging.getLogger(__name__)
+
+# Common error codes and messages
+ERROR_KB_NOT_INITIALIZED = "knowledge_base_not_initialized"
+ERROR_INDEX_NOT_INITIALIZED = "index_not_initialized"
+
+
+def get_kb_not_initialized_message(path: str, use_tool_hint: bool = False) -> str:
+    """Get standardized knowledge base not initialized message."""
+    hint = " using initialize_knowledge_base tool" if use_tool_hint else ""
+    return f"Knowledge base not initialized for path: {path}. Please initialize first{hint}."
+
+
+def create_error_response(
+    operation: str, error_code: str, message: str, path: str = None
+) -> ErrorResponse:
+    """Create standardized error response for all tools."""
+    return ErrorResponse(operation=operation, error=error_code, message=message, path=path)
 
 
 class MCPTool(ABC):
@@ -33,7 +69,7 @@ class MCPTool(ABC):
         pass
 
     @abstractmethod
-    async def execute(self, **kwargs) -> str:
+    async def execute(self, **kwargs) -> ToolResponse:
         """Execute the tool with given parameters."""
         pass
 
@@ -60,8 +96,15 @@ class KnowledgeBaseInitializeTool(MCPTool):
     def description(self) -> str:
         return "Initialize a knowledge base from documents."
 
-    async def execute(self, knowledge_base_path=None, embedding_model=None,
-                     chunk_size=None, chunk_overlap=None, context=None, **kwargs) -> str:
+    async def execute(
+        self,
+        knowledge_base_path=None,
+        embedding_model=None,
+        chunk_size=None,
+        chunk_overlap=None,
+        context=None,
+        **kwargs,
+    ) -> InitializeKnowledgeBaseResponse:
         """Execute knowledge base initialization."""
         try:
             # Use config manager for parameter resolution
@@ -71,15 +114,22 @@ class KnowledgeBaseInitializeTool(MCPTool):
             chunk_overlap = self.config_manager.get_chunk_overlap(chunk_overlap)
 
             # Use knowledge base manager for the actual work
-            documents, faiss_index, embedding_service, document_store = await self.kb_manager.initialize_knowledge_base(
-                kb_path_str, embedding_model, chunk_size, chunk_overlap, True, context
+            documents, faiss_index, embedding_service, document_store = (
+                await self.kb_manager.initialize_knowledge_base(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap, True, context
+                )
             )
 
             # Update application state
             cache_key = f"{kb_path_str}:{embedding_model}"
             self.app_state.update_knowledge_base_components(
-                embedding_service, self.kb_manager.get_or_create_document_processor(chunk_size, chunk_overlap),
-                faiss_index, document_store, documents, kb_path_str, cache_key
+                embedding_service,
+                self.kb_manager.get_or_create_document_processor(chunk_size, chunk_overlap),
+                faiss_index,
+                document_store,
+                documents,
+                kb_path_str,
+                cache_key,
             )
 
             # Get model info for result
@@ -87,17 +137,23 @@ class KnowledgeBaseInitializeTool(MCPTool):
             actual_model_used = model_info.get("actual_model_path", model_info.get("model_name"))
             unique_files = len(set(doc.filename for doc in documents))
 
-            result_message = f"""Knowledge base initialized successfully!
-- Path: {kb_path_str}
-- Documents: {unique_files} files
-- Chunks: {len(documents)} (chunk_size: {chunk_size}, overlap: {chunk_overlap})
-- Embedding model: {actual_model_used}
-- Embedding dimension: {embedding_service.dimension}"""
+            # Create structured response
+            response = InitializeKnowledgeBaseResponse(
+                path=kb_path_str,
+                documents=DocumentInfo(files=unique_files, chunks=len(documents)),
+                configuration=ConfigurationInfo(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    embedding_model=actual_model_used,
+                    embedding_dimension=embedding_service.dimension,
+                ),
+                message="Knowledge base initialized successfully!",
+            )
 
             if model_info.get("model_mismatch"):
-                result_message += f"\n⚠️  WARNING: Model mismatch detected"
+                response.warnings = ["Model mismatch detected"]
 
-            return result_message
+            return response
 
         except Exception as e:
             logger.error(f"Failed to initialize knowledge base: {e}")
@@ -121,54 +177,53 @@ class SemanticSearchTool(MCPTool):
     def description(self) -> str:
         return "Perform semantic search on the knowledge base."
 
-    async def execute(self, query: str, knowledge_base_path=None,
-                     top_k=None, include_scores=False, **kwargs) -> str:
-        """Execute semantic search."""
+    async def execute(
+        self, query: str, knowledge_base_path=None, top_k=None, include_scores=False, **kwargs
+    ) -> Union[List[SearchResult], ErrorResponse]:
+        """Execute semantic search - returns only results list."""
         try:
             kb_path_str = self.config_manager.validate_knowledge_base_path(knowledge_base_path)
             top_k = self.config_manager.get_top_k(top_k)
 
             if not self.app_state.is_knowledge_base_initialized(kb_path_str):
-                return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
+                return create_error_response(
+                    "semantic_search",
+                    ERROR_KB_NOT_INITIALIZED,
+                    get_kb_not_initialized_message(kb_path_str),
+                    kb_path_str,
+                )
 
             embedding_service = self.app_state.get_embedding_service()
             faiss_index = self.app_state.get_faiss_index()
             documents = self.app_state.get_documents()
 
             if not faiss_index or not faiss_index.initialized:
-                return "Knowledge base index is not initialized."
+                return create_error_response(
+                    "semantic_search",
+                    ERROR_INDEX_NOT_INITIALIZED,
+                    "Knowledge base index is not initialized.",
+                    kb_path_str,
+                )
 
             query_embedding = embedding_service.get_embedding(query)
             distances, indices = faiss_index.search(query_embedding, top_k)
 
             results = []
-            for i, (distance, idx) in enumerate(zip(distances, indices)):
+            for i, (_, idx) in enumerate(zip(distances, indices)):
                 if idx < len(documents):
                     doc = documents[idx]
-                    result = {
-                        "rank": i + 1,
-                        "filename": doc.filename,
-                        "relative_path": doc.relative_path,
-                        "chunk_index": doc.chunk_index,
-                        "content": doc.content[:500] + "..." if len(doc.content) > 500 else doc.content,
-                    }
-                    if include_scores:
-                        result["similarity_score"] = float(distance)
+                    content = doc.content[:500] + "..." if len(doc.content) > 500 else doc.content
 
+                    result = SearchResult(
+                        rank=i + 1,
+                        filename=doc.filename,
+                        relative_path=doc.relative_path,
+                        content=content,
+                    )
                     results.append(result)
 
-            if not results:
-                return "No relevant documents found for the query."
-
-            response_text = f"Found {len(results)} relevant document chunks for query: '{query}' (top_k={top_k})\n\n"
-
-            for result in results:
-                response_text += f"**Rank {result['rank']}** - {result['relative_path']} (chunk {result['chunk_index']})\n"
-                if include_scores:
-                    response_text += f"Similarity Score: {result['similarity_score']:.4f}\n"
-                response_text += f"Content: {result['content']}\n\n"
-
-            return response_text
+            # Return only the results list
+            return results
 
         except Exception as e:
             logger.error(f"Semantic search failed: {e}")
@@ -192,13 +247,20 @@ class KnowledgeBaseStatsTool(MCPTool):
     def description(self) -> str:
         return "Get statistics about the knowledge base."
 
-    async def execute(self, knowledge_base_path=None, **kwargs) -> str:
+    async def execute(
+        self, knowledge_base_path=None, **kwargs
+    ) -> Union[KnowledgeBaseStatsResponse, ErrorResponse]:
         """Execute knowledge base stats retrieval."""
         try:
             kb_path_str = self.config_manager.validate_knowledge_base_path(knowledge_base_path)
 
             if not self.app_state.is_knowledge_base_initialized(kb_path_str):
-                return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
+                return create_error_response(
+                    "get_knowledge_base_stats",
+                    ERROR_KB_NOT_INITIALIZED,
+                    get_kb_not_initialized_message(kb_path_str),
+                    kb_path_str,
+                )
 
             # Get components from application state
             embedding_service = self.app_state.get_embedding_service()
@@ -216,41 +278,40 @@ class KnowledgeBaseStatsTool(MCPTool):
             current_chunk_size = document_processor.chunk_size
             current_chunk_overlap = document_processor.chunk_overlap
 
-            stats_text = f"""Knowledge Base Statistics:
-
-**Path:** {kb_path_str}
-
-**Documents:**
-- Total files: {unique_files}
-- Total chunks: {len(documents)}
-- Average chunks per file: {len(documents) / unique_files if unique_files > 0 else 0:.1f}
-
-**Chunking Configuration:**
-- Chunk size: {current_chunk_size} characters
-- Chunk overlap: {current_chunk_overlap} characters
-
-**Index:**
-- Status: {'Initialized' if index_stats['initialized'] else 'Not initialized'}
-- Dimension: {index_stats['dimension']}
-- Vectors: {index_stats['total_vectors']}
-- Type: {index_stats['index_type']}
-
-**Embedding Model:**
-- Model: {model_info['model_name']}
-- Dimension: {model_info['dimension']}
-- Max sequence length: {model_info.get('max_sequence_length', 'N/A')}
-
-**Search Configuration:**
-- Default top_k: {self.config_manager.get_top_k()}
-
-**Document Store:**
-- Database: {store_stats['database_path']}
-- Tracked documents: {store_stats['total_documents']}
-- Tracked chunks: {store_stats['total_chunks']}
-- Last modification: {store_stats['latest_modification'] or 'N/A'}
-"""
-
-            return stats_text
+            # Create structured response
+            return KnowledgeBaseStatsResponse(
+                path=kb_path_str,
+                documents=DocumentStats(
+                    total_files=unique_files,
+                    total_chunks=len(documents),
+                    average_chunks_per_file=round(
+                        len(documents) / unique_files if unique_files > 0 else 0, 1
+                    ),
+                ),
+                chunking_configuration=ChunkingConfigInfo(
+                    chunk_size=current_chunk_size, chunk_overlap=current_chunk_overlap
+                ),
+                index=IndexInfo(
+                    status="initialized" if index_stats["initialized"] else "not_initialized",
+                    dimension=index_stats["dimension"],
+                    total_vectors=index_stats["total_vectors"],
+                    index_type=index_stats["index_type"],
+                ),
+                embedding_model=EmbeddingModelInfo(
+                    name=model_info["model_name"],
+                    dimension=model_info["dimension"],
+                    max_sequence_length=model_info.get("max_sequence_length"),
+                ),
+                search_configuration=SearchConfigInfo(
+                    default_top_k=self.config_manager.get_top_k()
+                ),
+                document_store=DocumentStoreInfo(
+                    database_path=store_stats["database_path"],
+                    tracked_documents=store_stats["total_documents"],
+                    tracked_chunks=store_stats["total_chunks"],
+                    last_modification=store_stats["latest_modification"],
+                ),
+            )
 
         except Exception as e:
             logger.error(f"Failed to get knowledge base stats: {e}")
@@ -274,13 +335,20 @@ class ListDocumentsTool(MCPTool):
     def description(self) -> str:
         return "List all documents in the knowledge base."
 
-    async def execute(self, knowledge_base_path=None, **kwargs) -> str:
+    async def execute(
+        self, knowledge_base_path=None, **kwargs
+    ) -> Union[ListDocumentsResponse, ErrorResponse]:
         """Execute document listing."""
         try:
             kb_path_str = self.config_manager.validate_knowledge_base_path(knowledge_base_path)
 
             if not self.app_state.is_knowledge_base_initialized(kb_path_str):
-                return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first."
+                return create_error_response(
+                    "list_documents",
+                    ERROR_KB_NOT_INITIALIZED,
+                    get_kb_not_initialized_message(kb_path_str),
+                    kb_path_str,
+                )
 
             documents = self.app_state.get_documents()
             document_store = self.app_state.get_document_store()
@@ -292,26 +360,30 @@ class ListDocumentsTool(MCPTool):
                 files_info[doc.relative_path]["chunk_count"] += 1
                 files_info[doc.relative_path]["total_content_length"] += len(doc.content)
 
-            if not files_info:
-                return "No documents found in the knowledge base."
-
-            response_text = f"Documents in knowledge base: {kb_path_str}\n\n"
-
+            document_list = []
             for relative_path in sorted(files_info.keys()):
                 info = files_info[relative_path]
                 doc_info = document_store.get_document_info(relative_path)
 
-                response_text += f"**{relative_path}**\n"
-                response_text += f"  - Chunks: {info['chunk_count']}\n"
-                response_text += f"  - Total content length: {info['total_content_length']:,} characters\n"
+                doc_item = DocumentListItem(
+                    relative_path=relative_path,
+                    chunk_count=info["chunk_count"],
+                    total_content_length=info["total_content_length"],
+                    last_modified=doc_info["last_modified"] if doc_info else None,
+                    file_hash=doc_info["file_hash"] if doc_info else None,
+                )
+                document_list.append(doc_item)
 
-                if doc_info:
-                    response_text += f"  - Last modified: {doc_info['last_modified']}\n"
-                    response_text += f"  - File hash: {doc_info['file_hash'][:16]}...\n"
+            # Create structured response
+            response = ListDocumentsResponse(
+                path=kb_path_str, total_documents=len(document_list), documents=document_list
+            )
 
-                response_text += "\n"
+            if not document_list:
+                response.success = False
+                response.message = "No documents found in the knowledge base"
 
-            return response_text
+            return response
 
         except Exception as e:
             logger.error(f"Failed to list documents: {e}")
@@ -336,13 +408,20 @@ class RefreshKnowledgeBaseTool(MCPTool):
     def description(self) -> str:
         return "Refresh the knowledge base with new or changed documents."
 
-    async def execute(self, knowledge_base_path=None, context=None, **kwargs) -> str:
+    async def execute(
+        self, knowledge_base_path=None, context=None, **kwargs
+    ) -> Union[RefreshKnowledgeBaseResponse, ErrorResponse]:
         """Execute knowledge base refresh."""
         try:
             kb_path_str = self.config_manager.validate_knowledge_base_path(knowledge_base_path)
 
             if not self.app_state.is_knowledge_base_initialized(kb_path_str):
-                return f"Knowledge base not initialized for path: {kb_path_str}. Please initialize first using initialize_knowledge_base tool."
+                return create_error_response(
+                    "refresh_knowledge_base",
+                    ERROR_KB_NOT_INITIALIZED,
+                    get_kb_not_initialized_message(kb_path_str, use_tool_hint=True),
+                    kb_path_str,
+                )
 
             # Get current configuration from the initialized knowledge base
             embedding_service = self.app_state.get_embedding_service()
@@ -357,14 +436,22 @@ class RefreshKnowledgeBaseTool(MCPTool):
                 await context.report_progress(10, 100, "Starting knowledge base refresh...")
 
             # Use dedicated refresh method that preserves cache and does incremental updates
-            documents, faiss_index, embedding_service, document_store = await self.kb_manager.refresh_knowledge_base(
-                kb_path_str, embedding_model, chunk_size, chunk_overlap, context
+            documents, faiss_index, embedding_service, document_store, has_changes = (
+                await self.kb_manager.refresh_knowledge_base(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap, context
+                )
             )
 
             # Update application state
             cache_key = f"{kb_path_str}:{embedding_model}"
             self.app_state.update_knowledge_base_components(
-                embedding_service, document_processor, faiss_index, document_store, documents, kb_path_str, cache_key
+                embedding_service,
+                document_processor,
+                faiss_index,
+                document_store,
+                documents,
+                kb_path_str,
+                cache_key,
             )
 
             if context:
@@ -372,16 +459,26 @@ class RefreshKnowledgeBaseTool(MCPTool):
 
             unique_files = len(set(doc.filename for doc in documents))
             actual_model_used = model_info.get("actual_model_path", model_info.get("model_name"))
+            status_message = (
+                "Updated with new or changed documents"
+                if has_changes
+                else "No changes detected, loaded from cache"
+            )
 
-            result_message = f"""Knowledge base refreshed successfully!
-- Path: {kb_path_str}
-- Documents: {unique_files} files
-- Chunks: {len(documents)} (chunk_size: {chunk_size}, overlap: {chunk_overlap})
-- Embedding model: {actual_model_used}
-- Embedding dimension: {embedding_service.dimension}
-- Status: Updated with any new or changed documents"""
-
-            return result_message
+            # Create structured response
+            return RefreshKnowledgeBaseResponse(
+                path=kb_path_str,
+                hasChanges=has_changes,
+                documents=DocumentInfo(files=unique_files, chunks=len(documents)),
+                configuration=ConfigurationInfo(
+                    chunk_size=chunk_size,
+                    chunk_overlap=chunk_overlap,
+                    embedding_model=actual_model_used,
+                    embedding_dimension=embedding_service.dimension,
+                ),
+                status=status_message,
+                message="Knowledge base refreshed successfully!",
+            )
 
         except Exception as e:
             logger.error(f"Failed to refresh knowledge base: {e}")
@@ -428,7 +525,7 @@ class ToolRegistry:
         """Check if tool is registered."""
         return name in self._tools
 
-    async def execute_tool(self, name: str, **kwargs) -> str:
+    async def execute_tool(self, name: str, **kwargs) -> ToolResponse:
         """Execute a tool by name."""
         tool = self.get_tool(name)
         return await tool.execute(**kwargs)

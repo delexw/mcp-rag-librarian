@@ -96,7 +96,9 @@ class DocumentStoreInterface(ABC):
     """Interface for document storage (ISP)."""
 
     @abstractmethod
-    def store_document(self, file_path: Path, file_hash: str, chunk_count: int, relative_path: str) -> None:
+    def store_document(
+        self, file_path: Path, file_hash: str, chunk_count: int, relative_path: str
+    ) -> None:
         """Store document metadata."""
         pass
 
@@ -161,27 +163,19 @@ class KnowledgeBaseManagerInterface(ABC):
         chunk_size: int,
         chunk_overlap: int,
         clean_cache: bool = True,
-        context=None
+        context=None,
     ) -> Tuple[List[Any], SearchIndexInterface, EmbeddingServiceInterface, DocumentStoreInterface]:
         """Initialize knowledge base."""
         pass
 
     @abstractmethod
-    async def refresh_knowledge_base(
-        self,
-        kb_path: str,
-        context=None
-    ) -> str:
+    async def refresh_knowledge_base(self, kb_path: str, context=None) -> str:
         """Refresh knowledge base with changes."""
         pass
 
     @abstractmethod
     async def search_knowledge_base(
-        self,
-        query: str,
-        kb_path: str,
-        top_k: int,
-        include_scores: bool = False
+        self, query: str, kb_path: str, top_k: int, include_scores: bool = False
     ) -> str:
         """Search knowledge base."""
         pass
@@ -218,7 +212,7 @@ class ApplicationStateInterface(ABC):
         document_store: DocumentStoreInterface,
         documents: list,
         kb_path: str,
-        cache_key: str
+        cache_key: str,
     ) -> None:
         """Update knowledge base components."""
         pass

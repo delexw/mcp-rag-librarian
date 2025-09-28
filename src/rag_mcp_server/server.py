@@ -7,7 +7,17 @@ This simplified version delegates to SOLID components for better maintainability
 import logging
 import argparse
 from pathlib import Path
-from typing import Union
+from typing import Union, List
+
+# Import response models for return type annotations
+from .core.response_models import (
+    InitializeKnowledgeBaseResponse,
+    SearchResult,
+    KnowledgeBaseStatsResponse,
+    ListDocumentsResponse,
+    RefreshKnowledgeBaseResponse,
+    ErrorResponse,
+)
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.fastmcp import Context
@@ -23,7 +33,7 @@ from .core.tool_registry import (
     SemanticSearchTool,
     KnowledgeBaseStatsTool,
     ListDocumentsTool,
-    RefreshKnowledgeBaseTool
+    RefreshKnowledgeBaseTool,
 )
 from .core.persistence_factory import PersistenceFactory
 
@@ -31,7 +41,7 @@ from .core.persistence_factory import PersistenceFactory
 from .interfaces.knowledge_base_interfaces import (
     ConfigManagerInterface,
     ApplicationStateInterface,
-    KnowledgeBaseManagerInterface
+    KnowledgeBaseManagerInterface,
 )
 
 # Configure logging
@@ -76,14 +86,18 @@ class RAGServer:
 
         # Knowledge base management
         kb_manager = KnowledgeBaseManager(
-            persistence_strategy=PersistenceFactory.create_file_persistence_strategy(config_manager),
-            config_manager=config_manager
+            persistence_strategy=PersistenceFactory.create_file_persistence_strategy(
+                config_manager
+            ),
+            config_manager=config_manager,
         )
         service_container.register_instance(KnowledgeBaseManagerInterface, kb_manager)
 
         # Tool registry
         tool_registry = ToolRegistry()
-        tool_registry.register_tool(KnowledgeBaseInitializeTool(kb_manager, config_manager, app_state))
+        tool_registry.register_tool(
+            KnowledgeBaseInitializeTool(kb_manager, config_manager, app_state)
+        )
         tool_registry.register_tool(SemanticSearchTool(config_manager, app_state))
         tool_registry.register_tool(KnowledgeBaseStatsTool(config_manager, app_state))
         tool_registry.register_tool(ListDocumentsTool(config_manager, app_state))
@@ -109,16 +123,20 @@ class RAGServer:
         if args.knowledge_base:
             kb_path = Path(args.knowledge_base)
             if not kb_path.exists():
-                raise ValueError(f"Default knowledge base directory does not exist: {args.knowledge_base}")
+                raise ValueError(
+                    f"Default knowledge base directory does not exist: {args.knowledge_base}"
+                )
             config_manager.set_override("knowledge_base_path", str(kb_path.resolve()))
 
-        config_manager.set_overrides({
-            "embedding_model": args.embedding_model,
-            "chunk_size": args.chunk_size,
-            "chunk_overlap": args.chunk_overlap,
-            "top_k": args.top_k,
-            "persist_cache": args.persist_cache,
-        })
+        config_manager.set_overrides(
+            {
+                "embedding_model": args.embedding_model,
+                "chunk_size": args.chunk_size,
+                "chunk_overlap": args.chunk_overlap,
+                "top_k": args.top_k,
+                "persist_cache": args.persist_cache,
+            }
+        )
 
         logger.info("=== Simplified RAG MCP Server Configuration ===")
         for key, value in config_manager.get_all_values().items():
@@ -137,7 +155,7 @@ async def initialize_knowledge_base(
     chunk_size: Union[int, None] = None,
     chunk_overlap: Union[int, None] = None,
     context: Context = None,
-) -> str:
+) -> Union[InitializeKnowledgeBaseResponse, ErrorResponse]:
     """Initialize a knowledge base from documents (delegates to SOLID architecture)."""
     tool_registry = server.get_tool_registry()
     return await tool_registry.execute_tool(
@@ -146,20 +164,18 @@ async def initialize_knowledge_base(
         embedding_model=embedding_model,
         chunk_size=chunk_size,
         chunk_overlap=chunk_overlap,
-        context=context
+        context=context,
     )
 
 
 @app.tool()
 async def refresh_knowledge_base(
     knowledge_base_path: Union[str, None] = None, context: Context = None
-) -> str:
+) -> Union[RefreshKnowledgeBaseResponse, ErrorResponse]:
     """Refresh the knowledge base with new or changed documents (delegates to SOLID architecture)."""
     tool_registry = server.get_tool_registry()
     return await tool_registry.execute_tool(
-        RefreshKnowledgeBaseTool.TOOL_NAME,
-        knowledge_base_path=knowledge_base_path,
-        context=context
+        RefreshKnowledgeBaseTool.TOOL_NAME, knowledge_base_path=knowledge_base_path, context=context
     )
 
 
@@ -169,7 +185,7 @@ async def semantic_search(
     knowledge_base_path: Union[str, None] = None,
     top_k: Union[int, None] = None,
     include_scores: bool = False,
-) -> str:
+) -> Union[List[SearchResult], ErrorResponse]:
     """Perform semantic search on the knowledge base (delegates to SOLID architecture)."""
     tool_registry = server.get_tool_registry()
     return await tool_registry.execute_tool(
@@ -177,27 +193,29 @@ async def semantic_search(
         query=query,
         knowledge_base_path=knowledge_base_path,
         top_k=top_k,
-        include_scores=include_scores
+        include_scores=include_scores,
     )
 
 
 @app.tool()
-async def get_knowledge_base_stats(knowledge_base_path: Union[str, None] = None) -> str:
+async def get_knowledge_base_stats(
+    knowledge_base_path: Union[str, None] = None
+) -> Union[KnowledgeBaseStatsResponse, ErrorResponse]:
     """Get statistics about the knowledge base (delegates to SOLID architecture)."""
     tool_registry = server.get_tool_registry()
     return await tool_registry.execute_tool(
-        KnowledgeBaseStatsTool.TOOL_NAME,
-        knowledge_base_path=knowledge_base_path
+        KnowledgeBaseStatsTool.TOOL_NAME, knowledge_base_path=knowledge_base_path
     )
 
 
 @app.tool()
-async def list_documents(knowledge_base_path: Union[str, None] = None) -> str:
+async def list_documents(
+    knowledge_base_path: Union[str, None] = None
+) -> Union[ListDocumentsResponse, ErrorResponse]:
     """List all documents in the knowledge base (delegates to SOLID architecture)."""
     tool_registry = server.get_tool_registry()
     return await tool_registry.execute_tool(
-        ListDocumentsTool.TOOL_NAME,
-        knowledge_base_path=knowledge_base_path
+        ListDocumentsTool.TOOL_NAME, knowledge_base_path=knowledge_base_path
     )
 
 
@@ -213,6 +231,7 @@ async def startup_auto_load():
 
     # Check if cache files exist
     from pathlib import Path
+
     cache_dir = Path(kb_path) / ".rag_cache"
     if not cache_dir.exists():
         logger.info("🔄 STARTUP: No cache directory found")
@@ -223,21 +242,30 @@ async def startup_auto_load():
         # Get KB manager and load from cache
         from .core.service_container import service_container
         from .interfaces.knowledge_base_interfaces import KnowledgeBaseManagerInterface
+
         kb_manager = service_container.resolve(KnowledgeBaseManagerInterface)
 
         embedding_model = config_manager.get_embedding_model()
         chunk_size = config_manager.get_chunk_size()
         chunk_overlap = config_manager.get_chunk_overlap()
 
-        documents, faiss_index, embedding_service, document_store = await kb_manager.load_from_cache_only(
-            kb_path, embedding_model, chunk_size, chunk_overlap
+        documents, faiss_index, embedding_service, document_store = (
+            await kb_manager.load_from_cache_only(
+                kb_path, embedding_model, chunk_size, chunk_overlap
+            )
         )
 
         # Update application state
         cache_key = f"{kb_path}:{embedding_model}"
         document_processor = kb_manager.get_or_create_document_processor(chunk_size, chunk_overlap)
         app_state.update_knowledge_base_components(
-            embedding_service, document_processor, faiss_index, document_store, documents, kb_path, cache_key
+            embedding_service,
+            document_processor,
+            faiss_index,
+            document_store,
+            documents,
+            kb_path,
+            cache_key,
         )
         logger.info(f"✅ STARTUP: Successfully loaded {len(documents)} documents from cache")
 
@@ -299,6 +327,7 @@ def main():
 
         # Auto-load cache at startup if persistence is enabled
         import asyncio
+
         asyncio.run(startup_auto_load())
 
         logger.info("=== RAG MCP Server Starting ===")

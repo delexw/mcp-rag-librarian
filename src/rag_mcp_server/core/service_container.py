@@ -10,7 +10,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class ServiceContainer:
@@ -100,11 +100,12 @@ class ServiceContainer:
             # If that fails, try to inject known dependencies
             # This is a simplified DI - in a real system you'd use more sophisticated injection
             import inspect
+
             signature = inspect.signature(implementation_class.__init__)
             kwargs = {}
 
             for param_name, param in signature.parameters.items():
-                if param_name == 'self':
+                if param_name == "self":
                     continue
 
                 param_type = param.annotation
@@ -136,10 +137,12 @@ class ServiceContainer:
 
     def is_registered(self, interface: Type[T]) -> bool:
         """Check if a service is registered."""
-        return (interface in self._instances or
-                interface in self._singletons or
-                interface in self._factories or
-                interface in self._transients)
+        return (
+            interface in self._instances
+            or interface in self._singletons
+            or interface in self._factories
+            or interface in self._transients
+        )
 
     def get_registration_info(self) -> Dict[str, Any]:
         """Get information about registered services."""
@@ -148,7 +151,7 @@ class ServiceContainer:
             "transients": [cls.__name__ for cls in self._transients.keys()],
             "factories": [cls.__name__ for cls in self._factories.keys()],
             "instances": [cls.__name__ for cls in self._instances.keys()],
-            "total_registrations": len(self._get_all_registered_types())
+            "total_registrations": len(self._get_all_registered_types()),
         }
 
 

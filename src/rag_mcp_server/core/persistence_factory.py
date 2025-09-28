@@ -22,7 +22,9 @@ class PersistenceFactory:
         return PersistenceStrategy(provider, cache_manager, key_generator, config_manager)
 
     @staticmethod
-    def create_s3_persistence_strategy(bucket_name: str, config_manager=None) -> PersistenceStrategy:
+    def create_s3_persistence_strategy(
+        bucket_name: str, config_manager=None
+    ) -> PersistenceStrategy:
         """Create S3-based persistence strategy (future extension)"""
         from .file_persistence import S3PersistenceProvider
 

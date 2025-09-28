@@ -74,7 +74,9 @@ class ConfigManager(ConfigManagerInterface):
             # Always resolve to absolute path for consistency
             return str(Path(provided_path).resolve())
 
-        default_path = self._overrides.get("knowledge_base_path") or self._defaults.get("knowledge_base_path")
+        default_path = self._overrides.get("knowledge_base_path") or self._defaults.get(
+            "knowledge_base_path"
+        )
         if default_path:
             # Already absolute from server startup, but ensure it's resolved
             return str(Path(default_path).resolve())
