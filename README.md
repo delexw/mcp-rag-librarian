@@ -6,8 +6,7 @@
     <a href="https://pypi.org/project/mcp-rag-librarian/"><img src="https://img.shields.io/pypi/v/mcp-rag-librarian" alt="PyPI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/delexw/mcp-rag-librarian" alt="License"></a>
   </p>
-  <p><strong>Fork of <a href="https://github.com/tungetti/rag-mcp-server">tungetti/rag-mcp-server</a> with persistence enhancements</strong></p>
-  <p><em>Original work by <a href="https://github.com/tungetti">Tommaso Maria Ungetti</a></em></p>
+  <p><em>Enhanced with persistence capabilities - original work by <a href="https://github.com/tungetti">Tommaso Maria Ungetti</a></em></p>
 </div>
 
 Your superhero librarian for intelligent document retrieval! 🦸‍♀️📚
@@ -39,16 +38,21 @@ A Model Context Protocol (MCP) server for Retrieval-Augmented Generation (RAG) o
 
 ## Features
 
-- **Document Processing**: Supports multiple file formats (.txt, .pdf, .md) with automatic text extraction and recursive directory scanning
+### 🚀 Enhanced Persistence & Performance
+- **Persistent Caching**: FAISS index and embeddings persistence with `--persist-cache` flag
+- **Auto-Load on Startup**: Cached knowledge bases load automatically when server starts
+- **SOLID Architecture**: Clean, extensible persistence layer following SOLID principles
+- **Smart Cache Management**: Avoid duplicate embeddings computation with intelligent caching
+- **Recursive Directory Scanning**: Load all files from subfolders automatically
+- **Markdown Support**: Added .md file processing support
+
+### 📚 Core RAG Capabilities
+- **Document Processing**: Supports multiple file formats (.txt, .pdf) with automatic text extraction
 - **Intelligent Chunking**: Configurable text chunking with overlap to preserve context
 - **Vector Embeddings**: Uses SentenceTransformers for high-quality text embeddings
 - **Semantic Search**: FAISS-powered similarity search for fast and accurate retrieval
 - **Incremental Updates**: Smart document tracking to only process new or changed files
-- **Persistent Caching**: FAISS index and embeddings persistence with `--persist-cache` flag
-- **Auto-Load on Startup**: Cached knowledge bases load automatically when server starts
 - **Progress Notifications**: Real-time progress updates during long-running operations via MCP progress notifications
-- **SOLID Architecture**: Clean, extensible persistence layer following SOLID principles
-- **SQLite Document Store**: Document metadata and change tracking
 - **Flexible Configuration**: Customizable embedding models, chunk sizes, and search parameters
 
 ## Architecture
@@ -776,7 +780,6 @@ MIT License - see LICENSE file for details.
 
 ## Acknowledgments
 
-- **Original Work**: This is a fork of [rag-mcp-server](https://github.com/tungetti/rag-mcp-server) by [Tommaso Maria Ungetti](https://github.com/tungetti)
 - Built on [MCP (Model Context Protocol)](https://github.com/anthropics/mcp)
 - Powered by [Sentence Transformers](https://www.sbert.net/)
 - Vector search by [FAISS](https://github.com/facebookresearch/faiss)
