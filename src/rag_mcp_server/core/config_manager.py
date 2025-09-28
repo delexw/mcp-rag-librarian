@@ -102,4 +102,8 @@ class ConfigManager(ConfigManagerInterface):
 
     def is_persistence_enabled(self) -> bool:
         """Check if persistence is enabled."""
-        return self.get_value("persist_cache", False)
+        try:
+            return self.get_value("persist_cache")
+        except ValueError:
+            # Default to False if persist_cache is not configured
+            return False
