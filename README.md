@@ -6,53 +6,56 @@
     <a href="https://pypi.org/project/mcp-rag-librarian/"><img src="https://img.shields.io/pypi/v/mcp-rag-librarian" alt="PyPI"></a>
     <a href="LICENSE"><img src="https://img.shields.io/github/license/delexw/mcp-rag-librarian" alt="License"></a>
   </p>
-  <p><em>Enhanced with persistence capabilities - original work by <a href="https://github.com/tungetti">Tommaso Maria Ungetti</a></em></p>
 </div>
 
 Your superhero librarian for intelligent document retrieval! 🦸‍♀️📚
 
 A Model Context Protocol (MCP) server for Retrieval-Augmented Generation (RAG) operations. RAG Librarian provides tools for building and querying vector-based knowledge bases from document collections, enabling semantic search and document retrieval capabilities with the power of a superhero librarian!
 
-- [Features](#features)
-- [Architecture](#architecture)
-- [Installation](#installation)
-- [Setup](#setup)
-  - [Find the MCP settings file for the client](#find-the-mcp-settings-file-for-the-client)
-    - [Claude Desktop](#claude-desktop)
-    - [Claude Code](#claude-code)
-    - [Cursor](#cursor)
-    - [Cline](#cline)
-    - [Windsurf](#windsurf)
-    - [Any other client](#any-other-client)
-  - [Set up the MCP server](#set-up-the-mcp-server)
-  - [Variant: Manual setup with uvx](#variant-manual-setup-with-uvx)
-- [Usage Examples](#usage-examples)
-  - [Sample LLM Queries](#sample-llm-queries)
-  - [Command Line Examples](#command-line-examples)
-- [MCP Tools](#mcp-tools)
-- [Technical Details](#technical-details)
-- [Configuration Examples](#configuration-examples)
-- [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
-- [License](#license)
+## Best Use Cases for MCP RAG 🚀
+
+### When to Choose MCP RAG Librarian
+
+**🔄 Dynamic & Always Fresh**
+- **On-Demand Initialization**: Quickly spin up and initialize with the latest documents whenever needed
+- **No Stale Data**: Always works with current documents since it initializes fresh each time
+- **Document Sync**: No need for background processes to monitor and update document changes
+
+**⚡ Perfect for Development**
+- **Local MCP Server**: Ideal for local development environments and coding agents
+- **Quick Integration**: Seamlessly integrates with MCP-compatible tools like Claude Code, Cursor, Cline
+- **Ephemeral by Design**: Start when needed, clean shutdown when done - no resource overhead
+
+**🛠️ Simplified Architecture**
+- **No Background Daemons**: Unlike long-run RAG servers that require separate update processes
+- **Process-Per-Task**: Each initialization gets fresh, consistent state
+- **Easy Debugging**: Clear startup/shutdown lifecycle makes troubleshooting straightforward
+
+**🎯 Use Cases**
+- **Coding Assistants**: Perfect for AI coding agents that need contextual document retrieval
+- **Development Workflows**: Ideal for dev environments where documents change frequently
+- **CI/CD Pipelines**: Excellent for GitHub Actions and CI pipelines processing small document sets
+- **Local AI Tools**: Great for personal productivity tools and local AI assistants
+- **Dynamic Workspaces**: Perfect when working with frequently updated documentation or codebases
+
 
 ## Features
 
 ### 🚀 Enhanced Persistence & Performance
 - **Persistent Caching**: FAISS index and embeddings persistence with `--persist-cache` flag
 - **Auto-Load on Startup**: Cached knowledge bases load automatically when server starts
+- **Structured JSON Responses**: All tools return well-structured JSON with detailed info
 - **SOLID Architecture**: Clean, extensible persistence layer following SOLID principles
 - **Smart Cache Management**: Avoid duplicate embeddings computation with intelligent caching
 - **Recursive Directory Scanning**: Load all files from subfolders automatically
 - **Markdown Support**: Added .md file processing support
+- **Progress Notifications**: Real-time progress updates during long-running operations via MCP progress notifications
 
 ### 📚 Core RAG Capabilities
 - **Document Processing**: Supports multiple file formats (.txt, .pdf) with automatic text extraction
 - **Intelligent Chunking**: Configurable text chunking with overlap to preserve context
 - **Vector Embeddings**: Uses SentenceTransformers for high-quality text embeddings
 - **Semantic Search**: FAISS-powered similarity search for fast and accurate retrieval
-- **Incremental Updates**: Smart document tracking to only process new or changed files
-- **Progress Notifications**: Real-time progress updates during long-running operations via MCP progress notifications
 - **Flexible Configuration**: Customizable embedding models, chunk sizes, and search parameters
 
 ## Architecture

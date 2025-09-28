@@ -17,6 +17,7 @@ from .response_models import (
     RefreshKnowledgeBaseResponse,
     DocumentInfo,
     ConfigurationInfo,
+    CacheFilesInfo,
     SearchResult,
     IndexInfo,
     EmbeddingModelInfo,
@@ -137,6 +138,33 @@ class KnowledgeBaseInitializeTool(MCPTool):
             actual_model_used = model_info.get("actual_model_path", model_info.get("model_name"))
             unique_files = len(set(doc.filename for doc in documents))
 
+            # Check if persistence is enabled and get cache file paths
+            cache_files_info = None
+            if self.config_manager.is_persistence_enabled():
+                # Generate cache keys using the persistence strategy
+                from .persistence import CacheKeyGenerator, ConfigHasher
+
+                hasher = ConfigHasher()
+                key_generator = CacheKeyGenerator(hasher)
+
+                embeddings_key = key_generator.generate_embeddings_key(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap
+                )
+                index_key = key_generator.generate_index_key(
+                    kb_path_str, embedding_model, chunk_size, chunk_overlap
+                )
+
+                # Use the persistence provider to get file paths (no duplication)
+                persistence_strategy = self.kb_manager.persistence_strategy
+                embeddings_file, index_file = persistence_strategy.provider.get_cache_file_paths(
+                    kb_path_str, embeddings_key, index_key
+                )
+
+                cache_files_info = CacheFilesInfo(
+                    embeddings_file=str(embeddings_file) if embeddings_file.exists() else None,
+                    index_file=str(index_file) if index_file.exists() else None,
+                )
+
             # Create structured response
             response = InitializeKnowledgeBaseResponse(
                 path=kb_path_str,
@@ -147,6 +175,7 @@ class KnowledgeBaseInitializeTool(MCPTool):
                     embedding_model=actual_model_used,
                     embedding_dimension=embedding_service.dimension,
                 ),
+                cache_files=cache_files_info,
                 message="Knowledge base initialized successfully!",
             )
 

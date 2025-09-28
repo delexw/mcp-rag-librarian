@@ -39,6 +39,14 @@ class FilePersistenceProvider(PersistenceProvider):
         config_hash = key.split(":")[-1]
         return cache_dir / f"faiss_index_{config_hash}.bin"
 
+    def get_cache_file_paths(
+        self, kb_path: str, embeddings_key: str, index_key: str
+    ) -> Tuple[Path, Path]:
+        """Get cache file paths for embeddings and index"""
+        embeddings_file = self._get_embeddings_file(kb_path, embeddings_key)
+        index_file = self._get_index_file(kb_path, index_key)
+        return embeddings_file, index_file
+
     def save_embeddings(self, key: str, embeddings: Any, documents: List) -> bool:
         """Save embeddings and documents to file"""
         try:

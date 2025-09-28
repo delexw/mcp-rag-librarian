@@ -41,6 +41,15 @@ class ConfigurationInfo(BaseModel):
     embedding_dimension: int = Field(description="Dimension of embeddings")
 
 
+class CacheFilesInfo(BaseModel):
+    """Cache files information model."""
+
+    embeddings_file: Optional[str] = Field(
+        default=None, description="Path to cached embeddings file"
+    )
+    index_file: Optional[str] = Field(default=None, description="Path to cached FAISS index file")
+
+
 class InitializeKnowledgeBaseResponse(BaseResponse):
     """Response model for initialize_knowledge_base tool."""
 
@@ -49,6 +58,9 @@ class InitializeKnowledgeBaseResponse(BaseResponse):
     path: str = Field(description="Path to the knowledge base")
     documents: DocumentInfo = Field(description="Document processing statistics")
     configuration: ConfigurationInfo = Field(description="Knowledge base configuration")
+    cache_files: Optional[CacheFilesInfo] = Field(
+        default=None, description="Cache file paths when persistence is enabled"
+    )
     warnings: Optional[List[str]] = Field(default=None, description="Optional warnings")
 
 
